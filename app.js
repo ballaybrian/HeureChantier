@@ -4,9 +4,8 @@ import { collection, addDoc, getDocs, query, orderBy } from "https://www.gstatic
 /* ==========================
    ADMIN SIMPLE (EN DUR)
    ========================== */
-const ADMIN_CODE = "1234"; // <<< TON CODE ICI
+const ADMIN_CODE = "1234"; // <<< CHANGE TON CODE ICI
 const ADMIN_STORAGE_KEY = "HC_ADMIN_ENABLED";
-
 const getAdminLocal = () => localStorage.getItem(ADMIN_STORAGE_KEY) === "1";
 const setAdminLocal = (on) => localStorage.setItem(ADMIN_STORAGE_KEY, on ? "1" : "0");
 
@@ -85,7 +84,6 @@ const siteEntriesList = $("siteEntriesList");
 const btnAddAgent = $("btnAddAgent");
 const agentPayTable = $("agentPayTable");
 
-/* Payment modal */
 const payModal = $("payModal");
 const payModalAgent = $("payModalAgent");
 const payForm = $("payForm");
@@ -251,7 +249,6 @@ function renderSitePick(){
   }
   if (SITES.length && !sitePick.value) sitePick.value = SITES[0].id;
 }
-
 sitePick.addEventListener("change", renderSiteEntries);
 
 function renderSiteEntries(){
@@ -423,8 +420,8 @@ function computeHours(start, end){
 (async function boot(){
   try{
     syncStatus.textContent = "Connexion…";
-    await ensureAnon();       // auth anonyme invisible
-    ADMIN = getAdminLocal();  // admin local
+    await ensureAnon();
+    ADMIN = getAdminLocal();
     applyAdminUI();
     await refreshAll();
     syncStatus.textContent = "OK ✅";
