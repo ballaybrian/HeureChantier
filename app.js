@@ -1,63 +1,65 @@
 import { db, ensureAnon } from "./firebase.js";
-import {
-  collection, addDoc, getDocs,
-  query, orderBy
-} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+import { collection, addDoc, getDocs, query, orderBy } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
-// ==========================
-// ADMIN SIMPLE (EN DUR)
-// ==========================
-const ADMIN_CODE = "1234"; // <<< CHANGE ICI
+/* ==========================
+   ADMIN SIMPLE (EN DUR)
+   ========================== */
+const ADMIN_CODE = "1234"; // <<< TON CODE ICI
 const ADMIN_STORAGE_KEY = "HC_ADMIN_ENABLED";
 
-function getAdminLocal() {
-  return localStorage.getItem(ADMIN_STORAGE_KEY) === "1";
-}
-function setAdminLocal(on) {
-  localStorage.setItem(ADMIN_STORAGE_KEY, on ? "1" : "0");
-}
+const getAdminLocal = () => localStorage.getItem(ADMIN_STORAGE_KEY) === "1";
+const setAdminLocal = (on) => localStorage.setItem(ADMIN_STORAGE_KEY, on ? "1" : "0");
 
-// Utils
+/* ==========================
+   UTILS
+   ========================== */
 const $ = (id) => document.getElementById(id);
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const fmtEUR = (n) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(Number(n || 0));
 const todayISO = () => new Date().toISOString().slice(0, 10);
-const esc = (str) => String(str ?? "")
-  .replaceAll("&","&amp;")
-  .replaceAll("<","&lt;")
-  .replaceAll(">","&gt;")
-  .replaceAll('"',"&quot;")
-  .replaceAll("'","&#039;");
+const esc = (s) => String(s ?? "")
+  .replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;")
+  .replaceAll('"',"&quot;").replaceAll("'","&#039;");
 
 const DEFAULT_RATE = 15;
 
-// Data
+/* ==========================
+   DATA
+   ========================== */
 let AGENTS = [];
 let SITES = [];
 let ENTRIES = [];
 let PAYMENTS = [];
 let ADMIN = false;
 
-// Top UI
+/* ==========================
+   TOP UI
+   ========================== */
 const syncStatus = $("syncStatus");
 const modePill = $("modePill");
 const btnAdmin = $("btnAdmin");
 const btnAdminOff = $("btnAdminOff");
 
-// Views
+/* ==========================
+   VIEWS
+   ========================== */
 const viewHome = $("viewHome");
 const viewAddHours = $("viewAddHours");
 const viewSites = $("viewSites");
 const viewPayments = $("viewPayments");
 
-// Admin modal
+/* ==========================
+   ADMIN MODAL
+   ========================== */
 const adminModal = $("adminModal");
 const adminForm = $("adminForm");
 const adminCode = $("adminCode");
 const adminMsg = $("adminMsg");
 const btnCloseAdmin = $("btnCloseAdmin");
 
-// Add Hours UI
+/* ==========================
+   ADD HOURS
+   ========================== */
 const readonlyAddHours = $("readonlyAddHours");
 const hoursForm = $("hoursForm");
 const agentSelect = $("agentSelect");
@@ -70,16 +72,20 @@ const endTime = $("endTime");
 const durationOut = $("durationOut");
 const amountOut = $("amountOut");
 
-// Sites UI
+/* ==========================
+   SITES
+   ========================== */
 const btnAddSite = $("btnAddSite");
 const sitePick = $("sitePick");
 const siteEntriesList = $("siteEntriesList");
 
-// Payments UI
+/* ==========================
+   PAYMENTS
+   ========================== */
 const btnAddAgent = $("btnAddAgent");
 const agentPayTable = $("agentPayTable");
 
-// Payment modal
+/* Payment modal */
 const payModal = $("payModal");
 const payModalAgent = $("payModalAgent");
 const payForm = $("payForm");
@@ -89,7 +95,9 @@ const btnClosePay = $("btnClosePay");
 const readonlyPay = $("readonlyPay");
 let payAgentId = null;
 
-// Navigation
+/* ==========================
+   NAV
+   ========================== */
 document.querySelectorAll("[data-go]").forEach(btn => btn.addEventListener("click", () => go(btn.dataset.go)));
 
 function showOnly(view){
@@ -103,27 +111,22 @@ function go(where){
   if (where === "payments") return showOnly(viewPayments);
 }
 
-// Admin modal open/close
-btnAdmin.addEventListener("click", openAdminModal);
-btnCloseAdmin.addEventListener("click", closeAdminModal);
-adminModal.addEventListener("click", (e)=> { if (e.target === adminModal) closeAdminModal(); });
-
-function openAdminModal(){
+/* ==========================
+   ADMIN (LOCAL)
+   ========================== */
+btnAdmin.addEventListener("click", () => {
   adminCode.value = "";
   adminMsg.classList.add("hidden");
   adminModal.classList.remove("hidden");
-}
-function closeAdminModal(){
-  adminModal.classList.add("hidden");
-}
+});
+btnCloseAdmin.addEventListener("click", () => adminModal.classList.add("hidden"));
+adminModal.addEventListener("click", (e) => { if (e.target === adminModal) adminModal.classList.add("hidden"); });
 
-// Enable/disable admin (LOCAL)
 adminForm.addEventListener("submit", (e) => {
   e.preventDefault();
   adminMsg.classList.add("hidden");
 
-  const code = adminCode.value.trim();
-  if (code !== ADMIN_CODE) {
+  if (adminCode.value.trim() !== ADMIN_CODE) {
     adminMsg.classList.remove("hidden");
     adminMsg.textContent = "Code admin invalide.";
     return;
@@ -132,7 +135,7 @@ adminForm.addEventListener("submit", (e) => {
   setAdminLocal(true);
   ADMIN = true;
   applyAdminUI();
-  closeAdminModal();
+  adminModal.classList.add("hidden");
 });
 
 btnAdminOff.addEventListener("click", () => {
@@ -141,7 +144,23 @@ btnAdminOff.addEventListener("click", () => {
   applyAdminUI();
 });
 
-// Payments modal
+function applyAdminUI(){
+  modePill.textContent = ADMIN ? "Mode: Admin" : "Mode: Lecture";
+  btnAdmin.classList.toggle("hidden", ADMIN);
+  btnAdminOff.classList.toggle("hidden", !ADMIN);
+
+  document.querySelectorAll(".adminOnly").forEach(el => {
+    el.disabled = !ADMIN;
+    el.style.opacity = ADMIN ? "1" : ".45";
+    el.style.pointerEvents = ADMIN ? "auto" : "none";
+  });
+
+  readonlyAddHours.classList.toggle("hidden", ADMIN);
+}
+
+/* ==========================
+   PAYMENT MODAL
+   ========================== */
 btnClosePay.addEventListener("click", closePayModal);
 payModal.addEventListener("click", (e)=> { if (e.target === payModal) closePayModal(); });
 
@@ -159,17 +178,20 @@ function closePayModal(){
   payModal.classList.add("hidden");
 }
 
-// Init defaults
+/* ==========================
+   DEFAULTS
+   ========================== */
 (function initDefaults(){
   workDate.value = todayISO();
   payDate.value = todayISO();
   startTime.value = "08:00";
   endTime.value = "12:00";
-  computeDuration();
 })();
 [startTime, endTime, agentSelect].forEach(el => el.addEventListener("change", computeDuration));
 
-// Firestore load
+/* ==========================
+   FIRESTORE LOAD
+   ========================== */
 async function loadAll(){
   const [aSnap, sSnap, eSnap, pSnap] = await Promise.all([
     getDocs(query(collection(db,"agents"), orderBy("name","asc"))),
@@ -177,7 +199,6 @@ async function loadAll(){
     getDocs(query(collection(db,"entries"), orderBy("date","desc"))),
     getDocs(query(collection(db,"payments"), orderBy("date","desc"))),
   ]);
-
   AGENTS = aSnap.docs.map(d => ({ id:d.id, ...d.data() }));
   SITES = sSnap.docs.map(d => ({ id:d.id, ...d.data() }));
   ENTRIES = eSnap.docs.map(d => ({ id:d.id, ...d.data() }));
@@ -191,21 +212,9 @@ async function refreshAll(){
   syncStatus.textContent = "OK ✅";
 }
 
-function applyAdminUI(){
-  modePill.textContent = ADMIN ? "Mode: Admin" : "Mode: Lecture";
-  btnAdmin.classList.toggle("hidden", ADMIN);
-  btnAdminOff.classList.toggle("hidden", !ADMIN);
-
-  document.querySelectorAll(".adminOnly").forEach(el => {
-    el.disabled = !ADMIN;
-    el.style.opacity = ADMIN ? "1" : ".45";
-    el.style.pointerEvents = ADMIN ? "auto" : "none";
-  });
-
-  readonlyAddHours.classList.toggle("hidden", ADMIN);
-}
-
-// Render
+/* ==========================
+   RENDER
+   ========================== */
 function renderAll(){
   renderSelects();
   renderSitePick();
@@ -215,44 +224,32 @@ function renderAll(){
 }
 
 function renderSelects(){
-  agentSelect.innerHTML = "";
-  if (AGENTS.length === 0){
-    agentSelect.innerHTML = `<option value="">(Aucun agent)</option>`;
-  } else {
-    for (const a of AGENTS){
-      const opt = document.createElement("option");
-      opt.value = a.id;
-      opt.textContent = a.name;
-      agentSelect.appendChild(opt);
-    }
+  agentSelect.innerHTML = AGENTS.length ? "" : `<option value="">(Aucun agent)</option>`;
+  for (const a of AGENTS){
+    const opt = document.createElement("option");
+    opt.value = a.id;
+    opt.textContent = a.name;
+    agentSelect.appendChild(opt);
   }
 
-  siteSelect.innerHTML = "";
-  if (SITES.length === 0){
-    siteSelect.innerHTML = `<option value="">(Aucun chantier)</option>`;
-  } else {
-    for (const s of SITES){
-      const opt = document.createElement("option");
-      opt.value = s.id;
-      opt.textContent = s.name;
-      siteSelect.appendChild(opt);
-    }
+  siteSelect.innerHTML = SITES.length ? "" : `<option value="">(Aucun chantier)</option>`;
+  for (const s of SITES){
+    const opt = document.createElement("option");
+    opt.value = s.id;
+    opt.textContent = s.name;
+    siteSelect.appendChild(opt);
   }
 }
 
 function renderSitePick(){
-  sitePick.innerHTML = "";
-  if (SITES.length === 0){
-    sitePick.innerHTML = `<option value="">(Aucun chantier)</option>`;
-    return;
-  }
+  sitePick.innerHTML = SITES.length ? "" : `<option value="">(Aucun chantier)</option>`;
   for (const s of SITES){
     const opt = document.createElement("option");
     opt.value = s.id;
     opt.textContent = s.name;
     sitePick.appendChild(opt);
   }
-  if (!sitePick.value) sitePick.value = SITES[0].id;
+  if (SITES.length && !sitePick.value) sitePick.value = SITES[0].id;
 }
 
 sitePick.addEventListener("change", renderSiteEntries);
@@ -260,19 +257,15 @@ sitePick.addEventListener("change", renderSiteEntries);
 function renderSiteEntries(){
   siteEntriesList.innerHTML = "";
   const siteId = sitePick.value;
-
   if (!siteId){
-    siteEntriesList.innerHTML = `<div class="item"><div class="itemMain">Aucun chantier</div><div class="itemSub">Ajoute un chantier pour commencer.</div></div>`;
+    siteEntriesList.innerHTML = `<div class="item"><div class="itemMain">Aucun chantier</div></div>`;
     return;
   }
-
   const list = ENTRIES.filter(e => e.siteId === siteId);
-
-  if (list.length === 0){
+  if (!list.length){
     siteEntriesList.innerHTML = `<div class="item"><div class="itemMain">Aucune heure</div><div class="itemSub">Aucune entrée pour ce chantier.</div></div>`;
     return;
   }
-
   for (const e of list){
     const div = document.createElement("div");
     div.className = "item";
@@ -289,13 +282,12 @@ function renderSiteEntries(){
 
 function renderPaymentsTable(){
   agentPayTable.innerHTML = "";
-
   const header = document.createElement("div");
   header.className = "tr th";
   header.innerHTML = `<div>Agent</div><div>Dû</div><div>Payé</div><div>Reste</div><div></div>`;
   agentPayTable.appendChild(header);
 
-  if (AGENTS.length === 0){
+  if (!AGENTS.length){
     const empty = document.createElement("div");
     empty.className = "tr";
     empty.innerHTML = `<div class="cellMuted">Aucun agent</div><div class="cellMuted">—</div><div class="cellMuted">—</div><div class="cellMuted">—</div><div></div>`;
@@ -304,8 +296,8 @@ function renderPaymentsTable(){
   }
 
   for (const a of AGENTS){
-    const due = agentDue(a.id);
-    const paid = agentPaid(a.id);
+    const due = round2(ENTRIES.filter(e=>e.agentId===a.id).reduce((s,e)=>s+Number(e.amount||0),0));
+    const paid = round2(PAYMENTS.filter(p=>p.agentId===a.id).reduce((s,p)=>s+Number(p.amount||0),0));
     const rest = Math.max(0, round2(due - paid));
 
     const row = document.createElement("div");
@@ -324,14 +316,9 @@ function renderPaymentsTable(){
   applyAdminUI();
 }
 
-function agentDue(agentId){
-  return round2(ENTRIES.filter(e => e.agentId === agentId).reduce((s,e)=>s+Number(e.amount||0),0));
-}
-function agentPaid(agentId){
-  return round2(PAYMENTS.filter(p => p.agentId === agentId).reduce((s,p)=>s+Number(p.amount||0),0));
-}
-
-// Admin CRUD
+/* ==========================
+   ADMIN CRUD
+   ========================== */
 btnAddAgent.addEventListener("click", async () => {
   if (!ADMIN) return;
   const name = prompt("Nom de l'agent :");
@@ -368,34 +355,23 @@ hoursForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   if (!ADMIN) return;
 
-  if (AGENTS.length === 0) return alert("Ajoute d'abord un agent.");
-  if (SITES.length === 0) return alert("Ajoute d'abord un chantier.");
-
   const agentId = agentSelect.value;
   const siteId = siteSelect.value;
-  const date = workDate.value;
-  const start = startTime.value;
-  const end = endTime.value;
-
-  const agent = AGENTS.find(a => a.id === agentId);
-  const site = SITES.find(s => s.id === siteId);
+  const agent = AGENTS.find(a=>a.id===agentId);
+  const site = SITES.find(s=>s.id===siteId);
   if (!agent || !site) return alert("Agent/Chantier invalide.");
 
-  const hours = computeHours(start, end);
+  const hours = computeHours(startTime.value, endTime.value);
   if (!(hours > 0)) return alert("Heures invalides (fin doit être après début).");
 
   const rate = Number(agent.rate ?? DEFAULT_RATE);
   const amount = round2(hours * rate);
 
   await addDoc(collection(db,"entries"), {
-    agentId,
-    agentName: agent.name,
-    siteId,
-    siteName: site.name,
-    date, start, end,
-    hours: round2(hours),
-    rate,
-    amount
+    agentId, agentName: agent.name,
+    siteId, siteName: site.name,
+    date: workDate.value, start: startTime.value, end: endTime.value,
+    hours: round2(hours), rate, amount
   });
 
   await refreshAll();
@@ -405,8 +381,8 @@ hoursForm.addEventListener("submit", async (e) => {
 payForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   if (!ADMIN) return;
-
   if (!payAgentId) return;
+
   const amt = Number(payAmount.value);
   if (!(amt > 0)) return alert("Montant invalide.");
 
@@ -422,34 +398,33 @@ payForm.addEventListener("submit", async (e) => {
   await refreshAll();
 });
 
-// Duration compute
+/* ==========================
+   DURATION
+   ========================== */
 function computeDuration(){
-  const agentId = agentSelect.value;
-  const agent = AGENTS.find(a => a.id === agentId);
+  const agent = AGENTS.find(a => a.id === agentSelect.value);
   const rate = Number(agent?.rate ?? DEFAULT_RATE);
   const h = computeHours(startTime.value, endTime.value);
-
   durationOut.textContent = `${Math.max(0, round2(h)).toFixed(2)} h`;
   amountOut.textContent = fmtEUR(Math.max(0, round2(h * rate)));
 }
-
 function computeHours(start, end){
   if (!start || !end) return 0;
   const [sh, sm] = start.split(":").map(Number);
   const [eh, em] = end.split(":").map(Number);
-  const s = sh * 60 + sm;
-  const e = eh * 60 + em;
-  const diff = e - s;
+  const diff = (eh*60+em) - (sh*60+sm);
   if (diff <= 0) return 0;
   return diff / 60;
 }
 
-// Boot
+/* ==========================
+   BOOT
+   ========================== */
 (async function boot(){
   try{
     syncStatus.textContent = "Connexion…";
-    await ensureAnon();            // auth anonyme invisible (utile si rules = auth required)
-    ADMIN = getAdminLocal();       // admin local uniquement
+    await ensureAnon();       // auth anonyme invisible
+    ADMIN = getAdminLocal();  // admin local
     applyAdminUI();
     await refreshAll();
     syncStatus.textContent = "OK ✅";
@@ -457,6 +432,6 @@ function computeHours(start, end){
   } catch (e){
     console.error(e);
     syncStatus.textContent = "Erreur Firebase ❌";
-    alert("Erreur Firebase. Vérifie: Firestore activé + règles + domaine autorisé.");
+    alert("Erreur Firebase. Vérifie Firestore + règles + domaines autorisés.");
   }
 })();

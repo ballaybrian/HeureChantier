@@ -17,7 +17,6 @@ export const auth = getAuth(app);
 
 export async function ensureAnon() {
   if (auth.currentUser) return auth.currentUser;
-
   return await new Promise((resolve, reject) => {
     const unsub = onAuthStateChanged(auth, async (u) => {
       try {
