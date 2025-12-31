@@ -1,241 +1,580 @@
-<!doctype html>
-<html lang="fr">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Heure Chantier</title>
-  <link rel="stylesheet" href="./styles.css" />
-</head>
-<body>
-  <header class="topbar">
-    <div class="brand">
-      <div class="logo">HC</div>
-      <div>
-        <div class="title">Heure Chantier</div>
-        <div class="subtitle">Sans connexion • sauvegarde partagée</div>
+import { db, ensureAnonAuth } from "./firebase.js";
+import {
+  collection, addDoc, getDocs, doc, updateDoc, deleteDoc,
+  query, orderBy
+} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+
+const $ = (id) => document.getElementById(id);
+const fmtEUR = (n) => new Intl.NumberFormat("fr-FR",{style:"currency",currency:"EUR"}).format(Number(n||0));
+const round2 = (n) => Math.round((Number(n)||0)*100)/100;
+const todayISO = () => new Date().toISOString().slice(0,10);
+const esc = (str) => String(str ?? "")
+  .replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;")
+  .replaceAll('"',"&quot;").replaceAll("'","&#039;");
+
+let agents = [];
+let sites = [];
+let entries = [];
+let payments = [];
+
+let currentAgentId = null;
+let agentTab = "hours";
+
+// UI
+const syncStatus = $("syncStatus");
+const viewHome = $("viewHome");
+const viewAgents = $("viewAgents");
+const viewSites = $("viewSites");
+const viewHistory = $("viewHistory");
+
+// Home nav
+document.querySelectorAll(".homeBtn").forEach(btn => {
+  btn.addEventListener("click", () => go(btn.dataset.go));
+});
+
+// Agents UI
+const btnBackAgents = $("btnBackAgents");
+const btnAddAgent = $("btnAddAgent");
+const agentsGrid = $("agentsGrid");
+
+const agentPanel = $("agentPanel");
+const agentTitle = $("agentTitle");
+const agentMeta = $("agentMeta");
+const btnSetRate = $("btnSetRate");
+const btnRenameAgent = $("btnRenameAgent");
+const btnDeleteAgent = $("btnDeleteAgent");
+
+const statTotal = $("statTotal");
+const statHours = $("statHours");
+const statPaid = $("statPaid");
+const statDue = $("statDue");
+
+const monthFilter = $("monthFilter");
+const entryForm = $("entryForm");
+const fDate = $("fDate");
+const fHours = $("fHours");
+const fRate = $("fRate");
+const btnUseDefaultRate = $("btnUseDefaultRate");
+const fSite = $("fSite");
+const fNote = $("fNote");
+const btnResetForm = $("btnResetForm");
+const entriesTbody = $("entriesTbody");
+
+const tabHours = $("tabHours");
+const tabPay = $("tabPay");
+
+document.querySelectorAll(".tab").forEach(t => {
+  t.addEventListener("click", () => setAgentTab(t.dataset.tab));
+});
+
+const payForm = $("payForm");
+const pDate = $("pDate");
+const pAmount = $("pAmount");
+const pNote = $("pNote");
+const btnPayMax = $("btnPayMax");
+
+// Sites UI
+const btnBackSites = $("btnBackSites");
+const btnAddSite = $("btnAddSite");
+const sitesList = $("sitesList");
+
+// History UI
+const btnBackHistory = $("btnBackHistory");
+const historyAgentFilter = $("historyAgentFilter");
+const historyTbody = $("historyTbody");
+
+// Back buttons
+btnBackAgents.addEventListener("click", () => go("home"));
+btnBackSites.addEventListener("click", () => go("home"));
+btnBackHistory.addEventListener("click", () => go("home"));
+
+// Month / dates init
+(function initDefaults(){
+  const d = new Date();
+  monthFilter.value = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+  fDate.value = todayISO();
+  pDate.value = todayISO();
+})();
+
+// ---------- Boot ----------
+(async function boot(){
+  try{
+    syncStatus.textContent = "Connexion…";
+    await ensureAnonAuth();
+    syncStatus.textContent = "Chargement…";
+    await loadAll();
+    renderAll();
+    syncStatus.textContent = "OK ✅";
+    go("home");
+  } catch (e){
+    console.error(e);
+    syncStatus.textContent = "Erreur Firebase ❌";
+    alert("Erreur Firebase. Vérifie: Auth Anonyme activée + Rules Firestore + domaine autorisé.");
+  }
+})();
+
+// ---------- Navigation ----------
+function showOnly(view){
+  [viewHome, viewAgents, viewSites, viewHistory].forEach(v => v.classList.add("hidden"));
+  view.classList.remove("hidden");
+}
+function go(where){
+  if (where === "home") return showOnly(viewHome);
+  if (where === "agents") { showOnly(viewAgents); renderAgents(); return; }
+  if (where === "sites") { showOnly(viewSites); renderSites(); return; }
+  if (where === "history") { showOnly(viewHistory); renderHistory(); return; }
+}
+
+// ---------- Firestore load ----------
+async function loadAll(){
+  const [aSnap, sSnap, eSnap, pSnap] = await Promise.all([
+    getDocs(query(collection(db,"agents"), orderBy("name","asc"))),
+    getDocs(query(collection(db,"sites"), orderBy("name","asc"))),
+    getDocs(query(collection(db,"entries"), orderBy("date","asc"))),
+    getDocs(query(collection(db,"payments"), orderBy("date","desc"))),
+  ]);
+
+  agents = aSnap.docs.map(d => ({ id:d.id, ...d.data() }));
+  sites = sSnap.docs.map(d => ({ id:d.id, ...d.data() }));
+  entries = eSnap.docs.map(d => normalizeEntry({ id:d.id, ...d.data() }));
+  payments = pSnap.docs.map(d => ({ id:d.id, ...d.data() }));
+}
+
+function normalizeEntry(e){
+  const hours = Number(e.hours ?? 0);
+  const rate = Number(e.rate ?? 0);
+  const amount = Number(e.amount ?? round2(hours*rate));
+  const paidAmount = Math.min(Number(e.paidAmount ?? 0), amount);
+  return { ...e, hours, rate, amount, paidAmount };
+}
+
+async function refresh(){
+  syncStatus.textContent = "Sync…";
+  await loadAll();
+  renderAll();
+  syncStatus.textContent = "OK ✅";
+}
+
+// ---------- Helpers totals ----------
+function agentTotalAmount(agentId){
+  return round2(entries.filter(e => e.agentId === agentId).reduce((a,e)=>a+e.amount,0));
+}
+function agentTotalHours(agentId){
+  return round2(entries.filter(e => e.agentId === agentId).reduce((a,e)=>a+e.hours,0));
+}
+function agentTotalPaid(agentId){
+  return round2(payments.filter(p => p.agentId === agentId).reduce((a,p)=>a+Number(p.amount||0),0));
+}
+function currentAgent(){
+  return agents.find(a => a.id === currentAgentId) || null;
+}
+function nextMonthStart(yyyy, mm){
+  const y = Number(yyyy), m = Number(mm);
+  const d = new Date(y, m-1, 1);
+  d.setMonth(d.getMonth()+1);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-01`;
+}
+
+// ---------- Render all ----------
+function renderAll(){
+  renderSiteSelect();
+  renderAgents();   // safe even if not visible
+  renderSites();
+  renderHistory();
+  if (currentAgentId) renderAgentPanel();
+}
+
+// ---------- Agents ----------
+btnAddAgent.addEventListener("click", async () => {
+  const name = prompt("Nom de l'agent :");
+  if (!name) return;
+  await addDoc(collection(db,"agents"), { name: name.trim(), defaultRate: 15 });
+  await refresh();
+  go("agents");
+});
+
+function renderAgents(){
+  agentsGrid.innerHTML = "";
+  agentPanel.classList.add("hidden");
+  currentAgentId = null;
+
+  if (agents.length === 0){
+    agentsGrid.innerHTML = `<div class="cardSub">Aucun agent. Clique “+ Ajouter agent”.</div>`;
+    return;
+  }
+
+  for (const a of agents){
+    const total = agentTotalAmount(a.id);
+    const paid = agentTotalPaid(a.id);
+    const due = Math.max(0, round2(total - paid));
+
+    const btn = document.createElement("button");
+    btn.className = "agentBtn";
+    btn.innerHTML = `
+      <div class="agentName">${esc(a.name)}</div>
+      <div class="agentMeta">Taux défaut: ${esc(String(a.defaultRate ?? 15))}€/h • Reste: <b>${fmtEUR(due)}</b></div>
+    `;
+    btn.addEventListener("click", () => openAgent(a.id));
+    agentsGrid.appendChild(btn);
+  }
+}
+
+async function openAgent(id){
+  currentAgentId = id;
+  agentPanel.classList.remove("hidden");
+  setAgentTab("hours");
+  renderAgentPanel();
+}
+
+btnRenameAgent.addEventListener("click", async () => {
+  const a = currentAgent(); if (!a) return;
+  const name = prompt("Nouveau nom :", a.name);
+  if (!name) return;
+  await updateDoc(doc(db,"agents",a.id), { name: name.trim() });
+  await refresh();
+  openAgent(a.id);
+});
+
+btnSetRate.addEventListener("click", async () => {
+  const a = currentAgent(); if (!a) return;
+  const v = prompt("Taux défaut (€ / h) :", String(a.defaultRate ?? 15));
+  if (v === null) return;
+  const rate = Number(v);
+  if (!(rate >= 0)) return alert("Valeur invalide.");
+  await updateDoc(doc(db,"agents",a.id), { defaultRate: rate });
+  await refresh();
+  openAgent(a.id);
+});
+
+btnDeleteAgent.addEventListener("click", async () => {
+  const a = currentAgent(); if (!a) return;
+  const ok = confirm(`Supprimer "${a.name}" ? (supprime aussi ses heures et paiements)`);
+  if (!ok) return;
+
+  // supprime tout ce qui dépend de l’agent
+  const eToDel = entries.filter(e => e.agentId === a.id);
+  const pToDel = payments.filter(p => p.agentId === a.id);
+
+  await Promise.all([
+    deleteDoc(doc(db,"agents",a.id)),
+    ...eToDel.map(e => deleteDoc(doc(db,"entries",e.id))),
+    ...pToDel.map(p => deleteDoc(doc(db,"payments",p.id))),
+  ]);
+
+  await refresh();
+  go("agents");
+});
+
+// ---------- Agent panel ----------
+monthFilter.addEventListener("change", () => renderAgentPanel());
+
+btnUseDefaultRate.addEventListener("click", () => {
+  const a = currentAgent(); if (!a) return;
+  fRate.value = String(a.defaultRate ?? 15);
+});
+
+btnResetForm.addEventListener("click", () => {
+  const a = currentAgent();
+  fDate.value = todayISO();
+  fHours.value = "";
+  fNote.value = "";
+  fSite.value = "";
+  fRate.value = String(a?.defaultRate ?? 15);
+});
+
+function renderAgentPanel(){
+  const a = currentAgent(); if (!a) return;
+
+  agentTitle.textContent = `Agent : ${a.name}`;
+  agentMeta.textContent = `Taux défaut: ${a.defaultRate ?? 15}€/h`;
+  btnUseDefaultRate.textContent = `${a.defaultRate ?? 15}€/h`;
+  if (!fRate.value) fRate.value = String(a.defaultRate ?? 15);
+
+  const total = agentTotalAmount(a.id);
+  const hours = agentTotalHours(a.id);
+  const paid = agentTotalPaid(a.id);
+  const due = Math.max(0, round2(total - paid));
+
+  statTotal.textContent = fmtEUR(total);
+  statHours.textContent = `${round2(hours)} h`;
+  statPaid.textContent = fmtEUR(paid);
+  statDue.textContent = fmtEUR(due);
+  btnPayMax.disabled = due <= 0.0001;
+
+  renderEntriesTable(a.id);
+  renderSiteSelect();
+}
+
+function setAgentTab(tab){
+  agentTab = tab;
+  document.querySelectorAll(".tab").forEach(x => x.classList.toggle("active", x.dataset.tab === tab));
+  tabHours.classList.toggle("hidden", tab !== "hours");
+  tabPay.classList.toggle("hidden", tab !== "pay");
+}
+
+// ---------- Entries CRUD ----------
+entryForm.addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const a = currentAgent(); if (!a) return;
+
+  const date = fDate.value;
+  const hours = Number(fHours.value);
+  const rate = Number(fRate.value);
+  if (!date || !(hours >= 0) || !(rate >= 0)) return;
+
+  const siteId = fSite.value || "";
+  const siteName = siteId ? (sites.find(s => s.id === siteId)?.name || "") : "";
+  const note = (fNote.value || "").trim();
+  const amount = round2(hours * rate);
+
+  await addDoc(collection(db,"entries"), {
+    agentId: a.id, date, hours, rate, amount,
+    paidAmount: 0,
+    siteId, siteName,
+    note
+  });
+
+  btnResetForm.click();
+  await refresh();
+  openAgent(a.id);
+});
+
+function renderEntriesTable(agentId){
+  const month = monthFilter.value;
+  const [yyyy, mm] = month.split("-");
+  const start = `${yyyy}-${mm}-01`;
+  const end = nextMonthStart(yyyy, mm);
+
+  const list = entries
+    .filter(e => e.agentId === agentId && e.date >= start && e.date < end)
+    .slice()
+    .sort((a,b)=> (b.date||"").localeCompare(a.date||""));
+
+  entriesTbody.innerHTML = "";
+  if (list.length === 0){
+    entriesTbody.innerHTML = `<tr><td colspan="9" class="muted">Aucune entrée sur ce mois.</td></tr>`;
+    return;
+  }
+
+  for (const e of list){
+    const rest = Math.max(0, round2(e.amount - e.paidAmount));
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${esc(e.date)}</td>
+      <td>${esc(String(e.hours))}</td>
+      <td>${esc(String(e.rate))} €</td>
+      <td><b>${fmtEUR(e.amount)}</b></td>
+      <td>${fmtEUR(e.paidAmount)}</td>
+      <td>${fmtEUR(rest)}</td>
+      <td>${esc(e.siteName || "")}</td>
+      <td>${esc(e.note || "")}</td>
+      <td>
+        <div class="row gap" style="flex-wrap:wrap">
+          <button class="btn" data-a="edit">Modifier</button>
+          <button class="btn danger" data-a="del">Suppr.</button>
+        </div>
+      </td>
+    `;
+    tr.querySelector('[data-a="edit"]').addEventListener("click", () => editEntry(e.id));
+    tr.querySelector('[data-a="del"]').addEventListener("click", () => deleteEntryDoc(e.id));
+    entriesTbody.appendChild(tr);
+  }
+}
+
+async function editEntry(entryId){
+  const e = entries.find(x => x.id === entryId);
+  if (!e) return;
+
+  const date = prompt("Date (YYYY-MM-DD)", e.date);
+  if (!date) return;
+
+  const hoursStr = prompt("Heures", String(e.hours));
+  if (hoursStr === null) return;
+
+  const rateStr = prompt("Taux (€)", String(e.rate));
+  if (rateStr === null) return;
+
+  const note = prompt("Note", e.note || "");
+  if (note === null) return;
+
+  const hours = Number(hoursStr);
+  const rate = Number(rateStr);
+  const amount = round2(hours * rate);
+  const paidAmount = Math.min(Number(e.paidAmount||0), amount);
+
+  await updateDoc(doc(db,"entries",e.id), { date, hours, rate, amount, note: note.trim(), paidAmount });
+  await refresh();
+  openAgent(e.agentId);
+}
+
+async function deleteEntryDoc(entryId){
+  const ok = confirm("Supprimer cette entrée ?");
+  if (!ok) return;
+  const e = entries.find(x => x.id === entryId);
+  await deleteDoc(doc(db,"entries",entryId));
+  await refresh();
+  if (e) openAgent(e.agentId);
+}
+
+// ---------- Payments ----------
+payForm.addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  await addPaymentAndAllocate(false);
+});
+btnPayMax.addEventListener("click", async () => {
+  await addPaymentAndAllocate(true);
+});
+
+async function addPaymentAndAllocate(payAll){
+  const a = currentAgent(); if (!a) return;
+
+  const date = pDate.value || todayISO();
+  let amount = Number(pAmount.value);
+  const note = (pNote.value || "").trim();
+
+  const total = agentTotalAmount(a.id);
+  const paid = agentTotalPaid(a.id);
+  const due = Math.max(0, round2(total - paid));
+
+  if (payAll) amount = due;
+  if (!(amount > 0)) return alert("Montant invalide.");
+
+  await addDoc(collection(db,"payments"), { agentId: a.id, date, amount: round2(amount), note });
+
+  // FIFO allocation
+  let remaining = round2(amount);
+  const unpaid = entries
+    .filter(e => e.agentId === a.id && e.paidAmount < e.amount)
+    .slice()
+    .sort((x,y)=> (x.date||"").localeCompare(y.date||""));
+
+  for (const e of unpaid){
+    if (remaining <= 0) break;
+    const rest = round2(e.amount - e.paidAmount);
+    const add = Math.min(rest, remaining);
+    remaining = round2(remaining - add);
+    await updateDoc(doc(db,"entries",e.id), { paidAmount: round2(e.paidAmount + add) });
+  }
+
+  pAmount.value = "";
+  pNote.value = "";
+  await refresh();
+  openAgent(a.id);
+}
+
+// ---------- Sites ----------
+btnAddSite.addEventListener("click", async () => {
+  const name = prompt("Nom du chantier :");
+  if (!name) return;
+  await addDoc(collection(db,"sites"), { name: name.trim() });
+  await refresh();
+  go("sites");
+});
+
+function renderSites(){
+  sitesList.innerHTML = "";
+  if (sites.length === 0){
+    sitesList.innerHTML = `<div class="cardSub">Aucun chantier. Clique “+ Ajouter chantier”.</div>`;
+    return;
+  }
+
+  for (const s of sites){
+    const used = entries.filter(e => e.siteId === s.id).length;
+    const row = document.createElement("div");
+    row.className = "listItem";
+    row.innerHTML = `
+      <div class="listLeft">
+        <div class="listTitle">${esc(s.name)}</div>
+        <div class="listSub">${used} entrée(s) liée(s)</div>
       </div>
-    </div>
-    <div class="right">
-      <span id="syncStatus" class="mini muted">Initialisation…</span>
-    </div>
-  </header>
-
-  <main class="container">
-
-    <!-- HOME -->
-    <section id="viewHome" class="card">
-      <h2>Accueil</h2>
-
-      <div class="homeGrid">
-        <button class="homeBtn" data-go="agents">
-          <div class="homeTitle">Agents</div>
-          <div class="homeSub">Heures + paiements</div>
-        </button>
-
-        <button class="homeBtn" data-go="sites">
-          <div class="homeTitle">Ajout chantier</div>
-          <div class="homeSub">Gérer les chantiers</div>
-        </button>
-
-        <button class="homeBtn" data-go="history">
-          <div class="homeTitle">Historique</div>
-          <div class="homeSub">Tous les paiements</div>
-        </button>
+      <div class="row gap">
+        <button class="btn" data-a="rename">Renommer</button>
+        <button class="btn danger" data-a="del">Suppr.</button>
       </div>
+    `;
 
-      <div id="homeHint" class="hint">
-        Tout est sauvegardé en ligne. Si 2 personnes modifient en même temps, recharge si besoin.
-      </div>
-    </section>
+    row.querySelector('[data-a="rename"]').addEventListener("click", async () => {
+      const nn = prompt("Nouveau nom :", s.name);
+      if (!nn) return;
 
-    <!-- AGENTS -->
-    <section id="viewAgents" class="card hidden">
-      <div class="cardHeader">
-        <div class="row">
-          <button id="btnBackAgents" class="btn ghost">← Accueil</button>
-          <h2>Agents</h2>
-        </div>
-        <div class="actions">
-          <button id="btnAddAgent" class="btn primary">+ Ajouter agent</button>
-        </div>
-      </div>
+      await updateDoc(doc(db,"sites",s.id), { name: nn.trim() });
 
-      <div id="agentsGrid" class="grid"></div>
+      // met à jour le snapshot siteName sur les entrées existantes
+      const related = entries.filter(e => e.siteId === s.id);
+      await Promise.all(related.map(e => updateDoc(doc(db,"entries",e.id), { siteName: nn.trim() })));
 
-      <section id="agentPanel" class="cardSub hidden">
-        <div class="cardHeader">
-          <div>
-            <h3 id="agentTitle">Agent</h3>
-            <div id="agentMeta" class="mini muted">Taux défaut: 15€/h</div>
-          </div>
-          <div class="actions">
-            <button id="btnSetRate" class="btn">Taux défaut</button>
-            <button id="btnRenameAgent" class="btn">Renommer</button>
-            <button id="btnDeleteAgent" class="btn danger">Supprimer</button>
-          </div>
-        </div>
+      await refresh();
+      go("sites");
+    });
 
-        <div class="stats">
-          <div class="stat">
-            <div class="statLabel">Total heures</div>
-            <div id="statTotal" class="statValue">0 €</div>
-            <div id="statHours" class="mini muted">0 h</div>
-          </div>
-          <div class="stat">
-            <div class="statLabel">Payé</div>
-            <div id="statPaid" class="statValue">0 €</div>
-            <div class="mini muted">via paiements</div>
-          </div>
-          <div class="stat">
-            <div class="statLabel">Reste à payer</div>
-            <div id="statDue" class="statValue">0 €</div>
-            <div class="mini muted">total - payé</div>
-          </div>
-        </div>
+    row.querySelector('[data-a="del"]').addEventListener("click", async () => {
+      const ok = confirm(`Supprimer chantier "${s.name}" ?`);
+      if (!ok) return;
+      await deleteDoc(doc(db,"sites",s.id));
+      await refresh();
+      go("sites");
+    });
 
-        <div class="tabs">
-          <button class="tab active" data-tab="hours">Heures</button>
-          <button class="tab" data-tab="pay">Payer</button>
-        </div>
+    sitesList.appendChild(row);
+  }
+}
 
-        <!-- HOURS -->
-        <div id="tabHours" class="cardSub2">
-          <div class="row spaceBetween">
-            <h4>Ajouter une entrée</h4>
-            <input id="monthFilter" type="month" class="input small" />
-          </div>
+function renderSiteSelect(){
+  const keep = fSite.value;
+  fSite.innerHTML = `<option value="">—</option>`;
+  for (const s of sites){
+    const opt = document.createElement("option");
+    opt.value = s.id;
+    opt.textContent = s.name;
+    fSite.appendChild(opt);
+  }
+  fSite.value = keep;
+}
 
-          <form id="entryForm" class="form">
-            <div class="field">
-              <label>Date</label>
-              <input id="fDate" type="date" class="input" required />
-            </div>
+// ---------- History ----------
+historyAgentFilter.addEventListener("change", renderHistory);
 
-            <div class="field">
-              <label>Heures</label>
-              <input id="fHours" type="number" step="0.25" min="0" class="input" required />
-            </div>
+function renderHistory(){
+  // filtre agents
+  const keep = historyAgentFilter.value || "__all__";
+  historyAgentFilter.innerHTML = `<option value="__all__">Tous les agents</option>`;
+  for (const a of agents){
+    const opt = document.createElement("option");
+    opt.value = a.id;
+    opt.textContent = a.name;
+    historyAgentFilter.appendChild(opt);
+  }
+  historyAgentFilter.value = keep;
 
-            <div class="field">
-              <label>Taux (€)</label>
-              <div class="row gap">
-                <input id="fRate" type="number" step="0.01" min="0" class="input" required />
-                <button id="btnUseDefaultRate" type="button" class="btn ghost">15€/h</button>
-              </div>
-            </div>
+  const filter = historyAgentFilter.value || "__all__";
+  const list = payments
+    .filter(p => filter === "__all__" ? true : p.agentId === filter)
+    .slice()
+    .sort((a,b)=> (b.date||"").localeCompare(a.date||""));
 
-            <div class="field">
-              <label>Chantier</label>
-              <select id="fSite" class="input">
-                <option value="">—</option>
-              </select>
-            </div>
+  historyTbody.innerHTML = "";
+  if (list.length === 0){
+    historyTbody.innerHTML = `<tr><td colspan="5" class="muted">Aucun paiement.</td></tr>`;
+    return;
+  }
 
-            <div class="field span2">
-              <label>Note</label>
-              <input id="fNote" type="text" class="input" placeholder="optionnel" />
-            </div>
-
-            <div class="field span2 row gap">
-              <button class="btn primary" type="submit">Ajouter</button>
-              <button id="btnResetForm" class="btn ghost" type="button">Reset</button>
-            </div>
-          </form>
-
-          <div class="divider"></div>
-
-          <div class="tableWrap">
-            <table class="table">
-              <thead>
-                <tr>
-                  <th>Date</th><th>Heures</th><th>Taux</th><th>Total</th><th>Payé</th><th>Reste</th><th>Chantier</th><th>Note</th><th>Actions</th>
-                </tr>
-              </thead>
-              <tbody id="entriesTbody"></tbody>
-            </table>
-          </div>
-        </div>
-
-        <!-- PAY -->
-        <div id="tabPay" class="cardSub2 hidden">
-          <div class="row spaceBetween">
-            <h4>Ajouter un paiement</h4>
-            <div class="pill">Déduit automatiquement du reste</div>
-          </div>
-
-          <form id="payForm" class="form two">
-            <div class="field">
-              <label>Date paiement</label>
-              <input id="pDate" type="date" class="input" required />
-            </div>
-            <div class="field">
-              <label>Montant (€)</label>
-              <input id="pAmount" type="number" step="0.01" min="0" class="input" required />
-            </div>
-            <div class="field span2">
-              <label>Note</label>
-              <input id="pNote" type="text" class="input" placeholder="optionnel" />
-            </div>
-            <div class="field span2 row gap">
-              <button class="btn primary" type="submit">Enregistrer</button>
-              <button id="btnPayMax" type="button" class="btn">Payer tout le reste</button>
-            </div>
-          </form>
-
-          <div class="mini muted" style="margin-top:8px;">
-            Paiement appliqué sur les entrées les plus anciennes non soldées (FIFO).
-          </div>
-        </div>
-
-      </section>
-    </section>
-
-    <!-- SITES -->
-    <section id="viewSites" class="card hidden">
-      <div class="cardHeader">
-        <div class="row">
-          <button id="btnBackSites" class="btn ghost">← Accueil</button>
-          <h2>Chantiers</h2>
-        </div>
-        <div class="actions">
-          <button id="btnAddSite" class="btn primary">+ Ajouter chantier</button>
-        </div>
-      </div>
-
-      <div id="sitesList" class="list"></div>
-    </section>
-
-    <!-- HISTORY -->
-    <section id="viewHistory" class="card hidden">
-      <div class="cardHeader">
-        <div class="row">
-          <button id="btnBackHistory" class="btn ghost">← Accueil</button>
-          <h2>Historique des paiements</h2>
-        </div>
-        <div class="row gap">
-          <select id="historyAgentFilter" class="input small"></select>
-        </div>
-      </div>
-
-      <div class="tableWrap">
-        <table class="table">
-          <thead>
-            <tr><th>Date</th><th>Agent</th><th>Montant</th><th>Note</th><th>Actions</th></tr>
-          </thead>
-          <tbody id="historyTbody"></tbody>
-        </table>
-      </div>
-
-      <div class="mini muted" style="margin-top:8px;">
-        Note : si tu supprimes un paiement, l’allocation déjà appliquée sur les lignes n’est pas recalculée automatiquement.
-      </div>
-    </section>
-
-  </main>
-
-  <footer class="footer">Heure Chantier • Firestore</footer>
-
-  <script type="module" src="./firebase.js"></script>
-  <script type="module" src="./app.js"></script>
-</body>
-</html>
+  for (const p of list){
+    const ag = agents.find(x => x.id === p.agentId);
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${esc(p.date || "")}</td>
+      <td>${esc(ag?.name || "—")}</td>
+      <td><b>${fmtEUR(p.amount)}</b></td>
+      <td>${esc(p.note || "")}</td>
+      <td><button class="btn danger">Suppr.</button></td>
+    `;
+    tr.querySelector("button").addEventListener("click", async () => {
+      const ok = confirm("Supprimer ce paiement ? (ne recalcul pas l’allocation déjà appliquée)");
+      if (!ok) return;
+      await deleteDoc(doc(db,"payments",p.id));
+      await refresh();
+      go("history");
+    });
+    historyTbody.appendChild(tr);
+  }
+}
