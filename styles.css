@@ -9,7 +9,6 @@
   --shadow: 0 18px 60px rgba(0,0,0,.45);
   --radius: 18px;
 }
-
 *{box-sizing:border-box}
 body{
   margin:0;
@@ -20,7 +19,6 @@ body{
     linear-gradient(180deg, #121b3b, var(--bg));
   color: var(--text);
 }
-
 .app{max-width:740px;margin:0 auto; padding:18px}
 .view{min-height: calc(100vh - 36px)}
 .hidden{display:none!important}
@@ -86,7 +84,6 @@ body{
   padding:14px;
   box-shadow: var(--shadow);
 }
-
 .btn{
   border:1px solid var(--line);
   background: rgba(255,255,255,.06);
@@ -145,7 +142,6 @@ label{font-size:12px; color:var(--muted)}
   color: var(--muted);
   margin-bottom:10px;
 }
-
 .divider{height:1px; background: rgba(255,255,255,.10); border-radius:999px; margin:14px 0}
 .sectionTitle{font-weight:950; margin-bottom:8px}
 

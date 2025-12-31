@@ -22,43 +22,28 @@ const esc = (s) => String(s ?? "")
 
 const DEFAULT_RATE = 15;
 
-/* ==========================
-   DATA
-   ========================== */
 let AGENTS = [];
 let SITES = [];
 let ENTRIES = [];
 let PAYMENTS = [];
 let ADMIN = false;
 
-/* ==========================
-   TOP UI
-   ========================== */
 const syncStatus = $("syncStatus");
 const modePill = $("modePill");
 const btnAdmin = $("btnAdmin");
 const btnAdminOff = $("btnAdminOff");
 
-/* ==========================
-   VIEWS
-   ========================== */
 const viewHome = $("viewHome");
 const viewAddHours = $("viewAddHours");
 const viewSites = $("viewSites");
 const viewPayments = $("viewPayments");
 
-/* ==========================
-   ADMIN MODAL
-   ========================== */
 const adminModal = $("adminModal");
 const adminForm = $("adminForm");
 const adminCode = $("adminCode");
 const adminMsg = $("adminMsg");
 const btnCloseAdmin = $("btnCloseAdmin");
 
-/* ==========================
-   ADD HOURS
-   ========================== */
 const readonlyAddHours = $("readonlyAddHours");
 const hoursForm = $("hoursForm");
 const agentSelect = $("agentSelect");
@@ -71,16 +56,10 @@ const endTime = $("endTime");
 const durationOut = $("durationOut");
 const amountOut = $("amountOut");
 
-/* ==========================
-   SITES
-   ========================== */
 const btnAddSite = $("btnAddSite");
 const sitePick = $("sitePick");
 const siteEntriesList = $("siteEntriesList");
 
-/* ==========================
-   PAYMENTS
-   ========================== */
 const btnAddAgent = $("btnAddAgent");
 const agentPayTable = $("agentPayTable");
 
@@ -93,9 +72,7 @@ const btnClosePay = $("btnClosePay");
 const readonlyPay = $("readonlyPay");
 let payAgentId = null;
 
-/* ==========================
-   NAV
-   ========================== */
+// Navigation
 document.querySelectorAll("[data-go]").forEach(btn => btn.addEventListener("click", () => go(btn.dataset.go)));
 
 function showOnly(view){
@@ -109,9 +86,7 @@ function go(where){
   if (where === "payments") return showOnly(viewPayments);
 }
 
-/* ==========================
-   ADMIN (LOCAL)
-   ========================== */
+// Admin modal
 btnAdmin.addEventListener("click", () => {
   adminCode.value = "";
   adminMsg.classList.add("hidden");
@@ -156,9 +131,7 @@ function applyAdminUI(){
   readonlyAddHours.classList.toggle("hidden", ADMIN);
 }
 
-/* ==========================
-   PAYMENT MODAL
-   ========================== */
+// Payment modal
 btnClosePay.addEventListener("click", closePayModal);
 payModal.addEventListener("click", (e)=> { if (e.target === payModal) closePayModal(); });
 
@@ -176,9 +149,7 @@ function closePayModal(){
   payModal.classList.add("hidden");
 }
 
-/* ==========================
-   DEFAULTS
-   ========================== */
+// Defaults
 (function initDefaults(){
   workDate.value = todayISO();
   payDate.value = todayISO();
@@ -187,9 +158,7 @@ function closePayModal(){
 })();
 [startTime, endTime, agentSelect].forEach(el => el.addEventListener("change", computeDuration));
 
-/* ==========================
-   FIRESTORE LOAD
-   ========================== */
+// Firestore load
 async function loadAll(){
   const [aSnap, sSnap, eSnap, pSnap] = await Promise.all([
     getDocs(query(collection(db,"agents"), orderBy("name","asc"))),
@@ -210,9 +179,6 @@ async function refreshAll(){
   syncStatus.textContent = "OK ✅";
 }
 
-/* ==========================
-   RENDER
-   ========================== */
 function renderAll(){
   renderSelects();
   renderSitePick();
@@ -313,9 +279,7 @@ function renderPaymentsTable(){
   applyAdminUI();
 }
 
-/* ==========================
-   ADMIN CRUD
-   ========================== */
+// Admin CRUD
 btnAddAgent.addEventListener("click", async () => {
   if (!ADMIN) return;
   const name = prompt("Nom de l'agent :");
@@ -395,9 +359,6 @@ payForm.addEventListener("submit", async (e) => {
   await refreshAll();
 });
 
-/* ==========================
-   DURATION
-   ========================== */
 function computeDuration(){
   const agent = AGENTS.find(a => a.id === agentSelect.value);
   const rate = Number(agent?.rate ?? DEFAULT_RATE);
@@ -414,9 +375,6 @@ function computeHours(start, end){
   return diff / 60;
 }
 
-/* ==========================
-   BOOT
-   ========================== */
 (async function boot(){
   try{
     syncStatus.textContent = "Connexion…";
@@ -432,3 +390,10 @@ function computeHours(start, end){
     alert("Erreur Firebase. Vérifie Firestore + règles + domaines autorisés.");
   }
 })();
+
+// PWA: register service worker
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/HeureChantier/sw.js").catch(console.error);
+  });
+}
