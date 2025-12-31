@@ -13,7 +13,6 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 
-  <!-- Styles (GitHub Pages repo path) -->
   <link rel="stylesheet" href="/HeureChantier/styles.css" />
 </head>
 <body>
@@ -49,7 +48,7 @@
 
           <button class="menuBtn" data-go="payments">
             <div class="menuTitle">Paiement</div>
-            <div class="menuDesc">Sommes dues • payées • reste</div>
+            <div class="menuDesc">Sommes dues • payées • reste (par chantier)</div>
           </button>
         </div>
 
@@ -150,7 +149,15 @@
       </header>
 
       <div class="card">
-        <div class="sectionTitle">Sommes par agent</div>
+        <!-- ✅ Sélection chantier pour paiements -->
+        <div class="field">
+          <label>Chantier</label>
+          <select id="paySitePick" class="input"></select>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="sectionTitle">Sommes par agent (chantier sélectionné)</div>
         <div id="agentPayTable" class="table"></div>
       </div>
 

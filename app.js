@@ -86,6 +86,7 @@ const siteEntriesList = $("siteEntriesList");
    ========================== */
 const btnAddAgent = $("btnAddAgent");
 const agentPayTable = $("agentPayTable");
+const paySitePick = $("paySitePick");
 
 /* Payment modal */
 const payModal = $("payModal");
@@ -167,9 +168,14 @@ btnClosePay.addEventListener("click", closePayModal);
 payModal.addEventListener("click", (e)=> { if (e.target === payModal) closePayModal(); });
 
 function openPayModal(agentId){
+  const siteId = paySitePick.value;
+  if (!siteId) return alert("Choisis un chantier avant d'ajouter un paiement.");
+
   payAgentId = agentId;
   const ag = AGENTS.find(a=>a.id===agentId);
-  payModalAgent.textContent = ag?.name ?? "Agent";
+  const site = SITES.find(s=>s.id===siteId);
+
+  payModalAgent.textContent = `${ag?.name ?? "Agent"} • ${site?.name ?? "Chantier"}`;
   payDate.value = todayISO();
   payAmount.value = "";
   readonlyPay.classList.toggle("hidden", ADMIN);
@@ -220,6 +226,7 @@ async function refreshAll(){
 function renderAll(){
   renderSelects();
   renderSitePick();
+  renderPaySitePick();
   renderSiteEntries();
   renderPaymentsTable();
   computeDuration();
@@ -255,6 +262,24 @@ function renderSitePick(){
 }
 sitePick.addEventListener("change", renderSiteEntries);
 
+function renderPaySitePick(){
+  if (!paySitePick) return;
+  const prev = paySitePick.value;
+
+  paySitePick.innerHTML = SITES.length ? "" : `<option value="">(Aucun chantier)</option>`;
+  for (const s of SITES){
+    const opt = document.createElement("option");
+    opt.value = s.id;
+    opt.textContent = s.name;
+    paySitePick.appendChild(opt);
+  }
+
+  if (SITES.length) {
+    paySitePick.value = prev && SITES.some(s=>s.id===prev) ? prev : SITES[0].id;
+  }
+}
+paySitePick?.addEventListener("change", () => renderPaymentsTable());
+
 function renderSiteEntries(){
   siteEntriesList.innerHTML = "";
   const siteId = sitePick.value;
@@ -285,8 +310,36 @@ function renderSiteEntries(){
   }
 }
 
+/* ==========================
+   PAYMENTS: PAR CHANTIER
+   ========================== */
+function agentDueForSite(agentId, siteId){
+  return round2(
+    ENTRIES
+      .filter(e => e.agentId === agentId && e.siteId === siteId)
+      .reduce((s,e)=> s + Number(e.amount || 0), 0)
+  );
+}
+
+function agentPaidForSite(agentId, siteId){
+  return round2(
+    PAYMENTS
+      .filter(p => p.agentId === agentId && p.siteId === siteId)
+      .reduce((s,p)=> s + Number(p.amount || 0), 0)
+  );
+}
+
 function renderPaymentsTable(){
   agentPayTable.innerHTML = "";
+
+  const siteId = paySitePick?.value || "";
+  if (!siteId){
+    const info = document.createElement("div");
+    info.className = "warning";
+    info.textContent = "Ajoute/choisis un chantier pour afficher les paiements.";
+    agentPayTable.appendChild(info);
+    return;
+  }
 
   const header = document.createElement("div");
   header.className = "tr th";
@@ -302,8 +355,8 @@ function renderPaymentsTable(){
   }
 
   for (const a of AGENTS){
-    const due = round2(ENTRIES.filter(e=>e.agentId===a.id).reduce((s,e)=>s+Number(e.amount||0),0));
-    const paid = round2(PAYMENTS.filter(p=>p.agentId===a.id).reduce((s,p)=>s+Number(p.amount||0),0));
+    const due = agentDueForSite(a.id, siteId);
+    const paid = agentPaidForSite(a.id, siteId);
     const rest = Math.max(0, round2(due - paid));
 
     const row = document.createElement("div");
@@ -329,7 +382,10 @@ function renderPaymentsTable(){
       const target = promptMergeTarget(a.id);
       if (!target) return;
 
-      const ok = confirm(`Fusionner "${a.name}" → "${target.name}" ?\n\nToutes les heures & paiements de "${a.name}" seront transférés, puis "${a.name}" sera supprimé.`);
+      const ok = confirm(
+        `Fusionner "${a.name}" → "${target.name}" ?\n\n` +
+        `Toutes les heures & paiements (tous chantiers) seront transférés, puis "${a.name}" sera supprimé.`
+      );
       if (!ok) return;
 
       try {
@@ -348,7 +404,7 @@ function renderPaymentsTable(){
     row.querySelector(".btnDel").addEventListener("click", async () => {
       if (!ADMIN) return;
 
-      const ok = confirm(`Supprimer "${a.name}" ?\n\nOK = supprime l'agent + ses heures + ses paiements`);
+      const ok = confirm(`Supprimer "${a.name}" ?\n\nOK = supprime l'agent + ses heures + ses paiements (tous chantiers)`);
       if (!ok) return;
 
       try{
@@ -376,7 +432,6 @@ function promptMergeTarget(sourceId){
   const source = AGENTS.find(a => a.id === sourceId);
   const choices = AGENTS.filter(a => a.id !== sourceId);
 
-  // Liste numérotée (simple & mobile friendly)
   const lines = choices.map((a, i) => `${i+1}) ${a.name}`).join("\n");
   const input = prompt(
     `Fusionner "${source?.name ?? "Agent"}" vers quel agent ?\n\n${lines}\n\nEntre le numéro :`
@@ -394,7 +449,7 @@ async function mergeAgentAndDeleteSource(sourceId, targetId){
   const target = AGENTS.find(a => a.id === targetId);
   if (!target) throw new Error("Target agent not found");
 
-  // 1) entries : réattribuer agentId + agentName
+  // entries : réattribuer agentId + agentName (tous chantiers)
   const entriesSnap = await getDocs(query(collection(db, "entries"), where("agentId", "==", sourceId)));
   for (const d of entriesSnap.docs) {
     await updateDoc(doc(db, "entries", d.id), {
@@ -403,7 +458,7 @@ async function mergeAgentAndDeleteSource(sourceId, targetId){
     });
   }
 
-  // 2) payments : réattribuer agentId + agentName
+  // payments : réattribuer agentId + agentName (tous chantiers)
   const paySnap = await getDocs(query(collection(db, "payments"), where("agentId", "==", sourceId)));
   for (const d of paySnap.docs) {
     await updateDoc(doc(db, "payments", d.id), {
@@ -412,7 +467,6 @@ async function mergeAgentAndDeleteSource(sourceId, targetId){
     });
   }
 
-  // 3) supprimer l’agent source
   await deleteDoc(doc(db, "agents", sourceId));
 }
 
@@ -461,6 +515,9 @@ btnAddSiteQuick.addEventListener("click", async () => {
   await refreshAll();
 });
 
+/* ==========================
+   AJOUT HEURE
+   ========================== */
 hoursForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   if (!ADMIN) return;
@@ -488,18 +545,28 @@ hoursForm.addEventListener("submit", async (e) => {
   alert("Heure enregistrée ✅");
 });
 
+/* ==========================
+   AJOUT PAIEMENT (PAR CHANTIER)
+   ========================== */
 payForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   if (!ADMIN) return;
   if (!payAgentId) return;
 
+  const siteId = paySitePick.value;
+  const site = SITES.find(s => s.id === siteId);
+  if (!site) return alert("Chantier invalide.");
+
   const amt = Number(payAmount.value);
   if (!(amt > 0)) return alert("Montant invalide.");
 
   const ag = AGENTS.find(a => a.id === payAgentId);
+
   await addDoc(collection(db,"payments"), {
     agentId: payAgentId,
     agentName: ag?.name ?? "",
+    siteId: site.id,
+    siteName: site.name,
     date: payDate.value || todayISO(),
     amount: round2(amt)
   });
@@ -545,3 +612,10 @@ function computeHours(start, end){
     alert("Erreur Firebase. Vérifie Firestore + règles + domaines autorisés.");
   }
 })();
+
+// PWA: register service worker
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/HeureChantier/sw.js").catch(console.error);
+  });
+}
