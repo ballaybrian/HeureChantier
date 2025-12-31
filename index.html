@@ -12,260 +12,228 @@
       <div class="logo">HC</div>
       <div>
         <div class="title">Heure Chantier</div>
-        <div class="subtitle">Heures • Paiements • Récap • Chantiers</div>
+        <div class="subtitle">Sans connexion • sauvegarde partagée</div>
       </div>
     </div>
     <div class="right">
-      <button id="btnSignIn" class="btn">Connexion</button>
-      <button id="btnSignOut" class="btn ghost hidden">Déconnexion</button>
+      <span id="syncStatus" class="mini muted">Initialisation…</span>
     </div>
   </header>
 
   <main class="container">
-    <section id="authBanner" class="banner hidden"></section>
 
     <!-- HOME -->
     <section id="viewHome" class="card">
-      <div class="cardHeader">
-        <h2>Agents</h2>
-        <div class="actions">
-          <button id="btnAddAgent" class="btn primary">+ Ajouter un agent</button>
-        </div>
+      <h2>Accueil</h2>
+
+      <div class="homeGrid">
+        <button class="homeBtn" data-go="agents">
+          <div class="homeTitle">Agents</div>
+          <div class="homeSub">Heures + paiements</div>
+        </button>
+
+        <button class="homeBtn" data-go="sites">
+          <div class="homeTitle">Ajout chantier</div>
+          <div class="homeSub">Gérer les chantiers</div>
+        </button>
+
+        <button class="homeBtn" data-go="history">
+          <div class="homeTitle">Historique</div>
+          <div class="homeSub">Tous les paiements</div>
+        </button>
       </div>
-      <div id="agentsGrid" class="grid"></div>
-      <div class="hint">Clique sur un agent pour gérer ses heures, paiements et récap.</div>
+
+      <div id="homeHint" class="hint">
+        Tout est sauvegardé en ligne. Si 2 personnes modifient en même temps, recharge si besoin.
+      </div>
     </section>
 
-    <!-- AGENT -->
-    <section id="viewAgent" class="card hidden">
+    <!-- AGENTS -->
+    <section id="viewAgents" class="card hidden">
       <div class="cardHeader">
         <div class="row">
-          <button id="btnBack" class="btn ghost">← Retour</button>
-          <div>
-            <h2 id="agentTitle">Agent</h2>
-            <div class="mini muted" id="agentSub">Taux par défaut: —</div>
-          </div>
+          <button id="btnBackAgents" class="btn ghost">← Accueil</button>
+          <h2>Agents</h2>
         </div>
         <div class="actions">
-          <button id="btnSetDefaultRate" class="btn">Taux défaut</button>
-          <button id="btnRenameAgent" class="btn">Renommer</button>
-          <button id="btnDeleteAgent" class="btn danger">Supprimer</button>
+          <button id="btnAddAgent" class="btn primary">+ Ajouter agent</button>
         </div>
       </div>
 
-      <div class="stats">
-        <div class="stat">
-          <div class="statLabel">Reste à payer</div>
-          <div id="balanceDue" class="statValue">0 €</div>
-          <div class="mini muted">Total heures - paiements</div>
-        </div>
-        <div class="stat">
-          <div class="statLabel">Total heures (global)</div>
-          <div id="totalAll" class="statValue">0 €</div>
-          <div id="totalHoursAll" class="mini muted">0 h</div>
-        </div>
-        <div class="stat">
-          <div class="statLabel">Total payé (historique)</div>
-          <div id="totalPaidAll" class="statValue">0 €</div>
-          <div id="paymentsCount" class="mini muted">0 paiements</div>
-        </div>
-      </div>
+      <div id="agentsGrid" class="grid"></div>
 
-      <div class="tabs">
-        <button class="tab active" data-tab="hours">Heures</button>
-        <button class="tab" data-tab="pay">Payer</button>
-        <button class="tab" data-tab="history">Historique</button>
-        <button class="tab" data-tab="recap">Récap</button>
-      </div>
+      <section id="agentPanel" class="cardSub hidden">
+        <div class="cardHeader">
+          <div>
+            <h3 id="agentTitle">Agent</h3>
+            <div id="agentMeta" class="mini muted">Taux défaut: 15€/h</div>
+          </div>
+          <div class="actions">
+            <button id="btnSetRate" class="btn">Taux défaut</button>
+            <button id="btnRenameAgent" class="btn">Renommer</button>
+            <button id="btnDeleteAgent" class="btn danger">Supprimer</button>
+          </div>
+        </div>
 
-      <!-- HOURS -->
-      <section id="tabHours" class="cardSub">
-        <div class="row spaceBetween">
-          <h3>Ajouter une entrée</h3>
-          <div class="row gap">
-            <span class="mini muted">Mois</span>
+        <div class="stats">
+          <div class="stat">
+            <div class="statLabel">Total heures</div>
+            <div id="statTotal" class="statValue">0 €</div>
+            <div id="statHours" class="mini muted">0 h</div>
+          </div>
+          <div class="stat">
+            <div class="statLabel">Payé</div>
+            <div id="statPaid" class="statValue">0 €</div>
+            <div class="mini muted">via paiements</div>
+          </div>
+          <div class="stat">
+            <div class="statLabel">Reste à payer</div>
+            <div id="statDue" class="statValue">0 €</div>
+            <div class="mini muted">total - payé</div>
+          </div>
+        </div>
+
+        <div class="tabs">
+          <button class="tab active" data-tab="hours">Heures</button>
+          <button class="tab" data-tab="pay">Payer</button>
+        </div>
+
+        <!-- HOURS -->
+        <div id="tabHours" class="cardSub2">
+          <div class="row spaceBetween">
+            <h4>Ajouter une entrée</h4>
             <input id="monthFilter" type="month" class="input small" />
           </div>
-        </div>
 
-        <form id="entryForm" class="form">
-          <div class="field">
-            <label>Date</label>
-            <input id="fDate" type="date" class="input" required />
-          </div>
-          <div class="field">
-            <label>Heures</label>
-            <input id="fHours" type="number" step="0.25" min="0" class="input" placeholder="ex: 7.5" required />
-          </div>
-          <div class="field">
-            <label>Taux (€)</label>
-            <div class="row gap">
-              <input id="fRate" type="number" step="0.01" min="0" class="input" required />
-              <button id="btnUseDefaultRate" class="btn ghost" type="button">15€/h</button>
+          <form id="entryForm" class="form">
+            <div class="field">
+              <label>Date</label>
+              <input id="fDate" type="date" class="input" required />
             </div>
-          </div>
 
-          <div class="field">
-            <label>Chantier</label>
-            <div class="row gap">
+            <div class="field">
+              <label>Heures</label>
+              <input id="fHours" type="number" step="0.25" min="0" class="input" required />
+            </div>
+
+            <div class="field">
+              <label>Taux (€)</label>
+              <div class="row gap">
+                <input id="fRate" type="number" step="0.01" min="0" class="input" required />
+                <button id="btnUseDefaultRate" type="button" class="btn ghost">15€/h</button>
+              </div>
+            </div>
+
+            <div class="field">
+              <label>Chantier</label>
               <select id="fSite" class="input">
                 <option value="">—</option>
               </select>
-              <button id="btnAddSite" class="btn" type="button">+ Chantier</button>
             </div>
+
+            <div class="field span2">
+              <label>Note</label>
+              <input id="fNote" type="text" class="input" placeholder="optionnel" />
+            </div>
+
+            <div class="field span2 row gap">
+              <button class="btn primary" type="submit">Ajouter</button>
+              <button id="btnResetForm" class="btn ghost" type="button">Reset</button>
+            </div>
+          </form>
+
+          <div class="divider"></div>
+
+          <div class="tableWrap">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Date</th><th>Heures</th><th>Taux</th><th>Total</th><th>Payé</th><th>Reste</th><th>Chantier</th><th>Note</th><th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="entriesTbody"></tbody>
+            </table>
           </div>
-
-          <div class="field span2">
-            <label>Note</label>
-            <input id="fNote" type="text" class="input" placeholder="optionnel" />
-          </div>
-
-          <div class="field span2 row gap">
-            <button class="btn primary" type="submit">Ajouter</button>
-            <button id="btnResetForm" class="btn ghost" type="button">Réinitialiser</button>
-          </div>
-        </form>
-
-        <div class="divider"></div>
-
-        <div class="row spaceBetween">
-          <h3>Entrées du mois</h3>
-          <button id="btnExportCSV" class="btn">Exporter CSV</button>
         </div>
 
-        <div class="tableWrap">
-          <table class="table">
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Heures</th>
-                <th>Taux</th>
-                <th>Total</th>
-                <th>Payé</th>
-                <th>Reste</th>
-                <th>Chantier</th>
-                <th>Note</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody id="entriesTbody"></tbody>
-          </table>
+        <!-- PAY -->
+        <div id="tabPay" class="cardSub2 hidden">
+          <div class="row spaceBetween">
+            <h4>Ajouter un paiement</h4>
+            <div class="pill">Déduit automatiquement du reste</div>
+          </div>
+
+          <form id="payForm" class="form two">
+            <div class="field">
+              <label>Date paiement</label>
+              <input id="pDate" type="date" class="input" required />
+            </div>
+            <div class="field">
+              <label>Montant (€)</label>
+              <input id="pAmount" type="number" step="0.01" min="0" class="input" required />
+            </div>
+            <div class="field span2">
+              <label>Note</label>
+              <input id="pNote" type="text" class="input" placeholder="optionnel" />
+            </div>
+            <div class="field span2 row gap">
+              <button class="btn primary" type="submit">Enregistrer</button>
+              <button id="btnPayMax" type="button" class="btn">Payer tout le reste</button>
+            </div>
+          </form>
+
+          <div class="mini muted" style="margin-top:8px;">
+            Paiement appliqué sur les entrées les plus anciennes non soldées (FIFO).
+          </div>
         </div>
+
       </section>
-
-      <!-- PAY -->
-      <section id="tabPay" class="cardSub hidden">
-        <div class="row spaceBetween">
-          <h3>Ajouter un paiement</h3>
-          <div class="pill">Déduit automatiquement du reste à payer</div>
-        </div>
-
-        <form id="payForm" class="form two">
-          <div class="field">
-            <label>Date paiement</label>
-            <input id="pDate" type="date" class="input" required />
-          </div>
-          <div class="field">
-            <label>Montant (€)</label>
-            <input id="pAmount" type="number" min="0" step="0.01" class="input" placeholder="ex: 200" required />
-          </div>
-          <div class="field span2">
-            <label>Note</label>
-            <input id="pNote" type="text" class="input" placeholder="optionnel (ex: acompte)" />
-          </div>
-
-          <div class="field span2 row gap">
-            <button class="btn primary" type="submit">Enregistrer paiement</button>
-            <button id="btnPayMax" class="btn" type="button">Payer tout le reste</button>
-          </div>
-        </form>
-
-        <div class="mini muted">
-          Le paiement est appliqué automatiquement aux entrées les plus anciennes non soldées (FIFO).
-        </div>
-      </section>
-
-      <!-- HISTORY -->
-      <section id="tabHistory" class="cardSub hidden">
-        <div class="row spaceBetween">
-          <h3>Historique des paiements</h3>
-          <div class="mini muted">Date • Montant • Note</div>
-        </div>
-        <div class="tableWrap">
-          <table class="table">
-            <thead>
-              <tr><th>Date</th><th>Montant</th><th>Note</th><th>Actions</th></tr>
-            </thead>
-            <tbody id="paymentsTbody"></tbody>
-          </table>
-        </div>
-        <div class="mini muted" style="margin-top:8px;">
-          Note : si tu supprimes un paiement, l’allocation faite sur les lignes ne se “défait” pas automatiquement (je peux te faire la v3 “recalcul auto” si tu veux).
-        </div>
-      </section>
-
-      <!-- RECAP -->
-      <section id="tabRecap" class="cardSub hidden">
-        <div class="row spaceBetween">
-          <h3>Récap complet</h3>
-          <div class="row gap">
-            <input id="rStart" type="date" class="input small" />
-            <span class="mini muted">→</span>
-            <input id="rEnd" type="date" class="input small" />
-            <button id="btnApplyRange" class="btn">Appliquer</button>
-            <button id="btnClearRange" class="btn ghost">Reset</button>
-          </div>
-        </div>
-
-        <div class="recapGrid">
-          <div class="kpi">
-            <div class="mini muted">Total période</div>
-            <div id="rTotal" class="kpiVal">0 €</div>
-            <div id="rHours" class="mini muted">0 h</div>
-          </div>
-          <div class="kpi">
-            <div class="mini muted">Payé période</div>
-            <div id="rPaid" class="kpiVal">0 €</div>
-            <div class="mini muted">via historique</div>
-          </div>
-          <div class="kpi">
-            <div class="mini muted">Reste période</div>
-            <div id="rDue" class="kpiVal">0 €</div>
-            <div class="mini muted">théorique</div>
-          </div>
-        </div>
-
-        <div class="divider"></div>
-
-        <div class="row spaceBetween">
-          <h3>Par chantier</h3>
-          <div class="mini muted">Heures / Total</div>
-        </div>
-        <div class="tableWrap">
-          <table class="table">
-            <thead><tr><th>Chantier</th><th>Heures</th><th>Total</th></tr></thead>
-            <tbody id="recapBySiteTbody"></tbody>
-          </table>
-        </div>
-
-        <div class="divider"></div>
-
-        <div class="row spaceBetween">
-          <h3>Par mois</h3>
-          <div class="mini muted">AAAA-MM</div>
-        </div>
-        <div class="tableWrap">
-          <table class="table">
-            <thead><tr><th>Mois</th><th>Heures</th><th>Total</th></tr></thead>
-            <tbody id="recapByMonthTbody"></tbody>
-          </table>
-        </div>
-      </section>
-
     </section>
+
+    <!-- SITES -->
+    <section id="viewSites" class="card hidden">
+      <div class="cardHeader">
+        <div class="row">
+          <button id="btnBackSites" class="btn ghost">← Accueil</button>
+          <h2>Chantiers</h2>
+        </div>
+        <div class="actions">
+          <button id="btnAddSite" class="btn primary">+ Ajouter chantier</button>
+        </div>
+      </div>
+
+      <div id="sitesList" class="list"></div>
+    </section>
+
+    <!-- HISTORY -->
+    <section id="viewHistory" class="card hidden">
+      <div class="cardHeader">
+        <div class="row">
+          <button id="btnBackHistory" class="btn ghost">← Accueil</button>
+          <h2>Historique des paiements</h2>
+        </div>
+        <div class="row gap">
+          <select id="historyAgentFilter" class="input small"></select>
+        </div>
+      </div>
+
+      <div class="tableWrap">
+        <table class="table">
+          <thead>
+            <tr><th>Date</th><th>Agent</th><th>Montant</th><th>Note</th><th>Actions</th></tr>
+          </thead>
+          <tbody id="historyTbody"></tbody>
+        </table>
+      </div>
+
+      <div class="mini muted" style="margin-top:8px;">
+        Note : si tu supprimes un paiement, l’allocation déjà appliquée sur les lignes n’est pas recalculée automatiquement.
+      </div>
+    </section>
+
   </main>
 
-  <footer class="footer">Heure Chantier • v2</footer>
+  <footer class="footer">Heure Chantier • Firestore</footer>
 
   <script type="module" src="./firebase.js"></script>
   <script type="module" src="./app.js"></script>

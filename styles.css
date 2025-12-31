@@ -1,6 +1,5 @@
 :root{
-  --bg1:#070a12;
-  --bg2:#0a1330;
+  --bg1:#070a12; --bg2:#0a1330;
   --card:rgba(255,255,255,.06);
   --card2:rgba(255,255,255,.04);
   --line:rgba(255,255,255,.12);
@@ -8,12 +7,12 @@
   --muted:rgba(234,240,255,.68);
   --primary:#6aa6ff;
   --danger:#ff5b6b;
-  --shadow: 0 18px 80px rgba(0,0,0,.35);
+  --shadow:0 18px 80px rgba(0,0,0,.35);
 }
 *{box-sizing:border-box}
 body{
   margin:0;
-  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+  font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;
   color:var(--text);
   background:
     radial-gradient(1200px 600px at 20% 0%, rgba(106,166,255,.22), transparent 60%),
@@ -33,10 +32,10 @@ body{
   background: rgba(7,10,18,.72);
   backdrop-filter: blur(14px);
 }
-.brand{display:flex; align-items:center; gap:12px}
+.brand{display:flex;align-items:center;gap:12px}
 .logo{
   width:44px;height:44px;border-radius:14px;
-  display:grid; place-items:center;
+  display:grid;place-items:center;
   background: linear-gradient(135deg, rgba(106,166,255,.28), rgba(79,140,255,.10));
   border:1px solid rgba(106,166,255,.35);
   font-weight:900;
@@ -52,7 +51,6 @@ body{
   box-shadow: var(--shadow);
   padding:14px;
 }
-.cardHeader{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}
 .cardSub{
   border-radius:18px;
   border:1px solid var(--line);
@@ -60,14 +58,14 @@ body{
   padding:12px;
   margin-top:12px;
 }
-.banner{
+.cardSub2{
   border-radius:16px;
-  border:1px solid var(--line);
-  background: rgba(255,255,255,.05);
-  padding:10px 12px;
-  color: var(--muted);
-  margin-bottom:12px;
+  border:1px solid rgba(255,255,255,.10);
+  background: rgba(0,0,0,.12);
+  padding:12px;
+  margin-top:10px;
 }
+.cardHeader{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}
 
 .row{display:flex;align-items:center;gap:10px}
 .spaceBetween{justify-content:space-between}
@@ -93,6 +91,25 @@ body{
   background: rgba(255,91,107,.14);
 }
 
+.homeGrid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(240px,1fr));
+  gap:12px;
+  margin-top:12px;
+}
+.homeBtn{
+  text-align:left;
+  padding:16px;
+  border-radius:18px;
+  border:1px solid var(--line);
+  background: rgba(255,255,255,.05);
+  cursor:pointer;
+}
+.homeBtn:hover{filter:brightness(1.1); transform: translateY(-1px)}
+.homeTitle{font-weight:950;font-size:18px}
+.homeSub{color:var(--muted);font-size:12px;margin-top:6px}
+.hint{margin-top:12px;color:var(--muted);font-size:12px}
+
 .grid{
   display:grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -110,11 +127,22 @@ body{
 .agentBtn:hover{filter:brightness(1.1); transform: translateY(-1px)}
 .agentName{font-weight:900}
 .agentMeta{color:var(--muted);font-size:12px;margin-top:6px}
-.hint{margin-top:10px;color:var(--muted);font-size:12px}
+
+.list{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+.listItem{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:12px;
+  border-radius:16px;
+  border:1px solid var(--line);
+  background: rgba(255,255,255,.04);
+}
+.listLeft{display:flex;flex-direction:column;gap:4px}
+.listTitle{font-weight:850}
+.listSub{font-size:12px;color:var(--muted)}
 
 .stats{
   display:grid;
-  grid-template-columns: repeat(3, minmax(0,1fr));
+  grid-template-columns:repeat(3,minmax(0,1fr));
   gap:10px;
   margin:10px 0;
 }
@@ -139,7 +167,7 @@ body{
 
 .form{
   display:grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns:repeat(3,minmax(0,1fr));
   gap:10px;
   margin-top:10px;
 }
@@ -184,25 +212,9 @@ select.input{appearance:none}
   border-radius:999px;
 }
 
-.recapGrid{
-  display:grid;
-  grid-template-columns:repeat(3,minmax(0,1fr));
-  gap:10px;
-  margin-top:10px;
-}
-.kpi{
-  border:1px solid var(--line);
-  background: rgba(255,255,255,.04);
-  border-radius:18px;
-  padding:12px;
-}
-.kpiVal{font-size:22px;font-weight:950;margin-top:3px}
-
 .footer{text-align:center;color:var(--muted);font-size:12px;padding:16px 10px}
-
 @media (max-width: 980px){
   .stats{grid-template-columns:1fr}
-  .recapGrid{grid-template-columns:1fr}
   .form{grid-template-columns:1fr}
   .form.two{grid-template-columns:1fr}
   .field.span2{grid-column:auto}

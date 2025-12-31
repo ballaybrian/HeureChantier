@@ -1,10 +1,9 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+import { getFirestore } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 import {
-  getFirestore, collection, addDoc, doc, getDocs, updateDoc, deleteDoc,
-  query, where, orderBy, serverTimestamp
-} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
-import {
-  getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged
+  getAuth,
+  onAuthStateChanged,
+  signInAnonymously
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
 
 const firebaseConfig = {
@@ -20,8 +19,22 @@ export const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const auth = getAuth(app);
 
-export const f = {
-  collection, addDoc, doc, getDocs, updateDoc, deleteDoc,
-  query, where, orderBy, serverTimestamp,
-  GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged
-};
+export async function ensureAnonAuth() {
+  if (auth.currentUser) return auth.currentUser;
+
+  return await new Promise((resolve, reject) => {
+    const unsub = onAuthStateChanged(auth, async (u) => {
+      try {
+        if (u) {
+          unsub();
+          resolve(u);
+          return;
+        }
+        await signInAnonymously(auth);
+      } catch (e) {
+        unsub();
+        reject(e);
+      }
+    });
+  });
+}
