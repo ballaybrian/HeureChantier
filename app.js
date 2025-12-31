@@ -1,5 +1,8 @@
 import { db, ensureAnon } from "./firebase.js";
-import { collection, addDoc, getDocs, query, orderBy } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+import {
+  collection, addDoc, getDocs, query, orderBy,
+  doc, deleteDoc, where, updateDoc
+} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
 /* ==========================
    ADMIN SIMPLE (EN DUR)
@@ -22,28 +25,43 @@ const esc = (s) => String(s ?? "")
 
 const DEFAULT_RATE = 15;
 
+/* ==========================
+   DATA
+   ========================== */
 let AGENTS = [];
 let SITES = [];
 let ENTRIES = [];
 let PAYMENTS = [];
 let ADMIN = false;
 
+/* ==========================
+   TOP UI
+   ========================== */
 const syncStatus = $("syncStatus");
 const modePill = $("modePill");
 const btnAdmin = $("btnAdmin");
 const btnAdminOff = $("btnAdminOff");
 
+/* ==========================
+   VIEWS
+   ========================== */
 const viewHome = $("viewHome");
 const viewAddHours = $("viewAddHours");
 const viewSites = $("viewSites");
 const viewPayments = $("viewPayments");
 
+/* ==========================
+   ADMIN MODAL
+   ========================== */
 const adminModal = $("adminModal");
 const adminForm = $("adminForm");
 const adminCode = $("adminCode");
 const adminMsg = $("adminMsg");
 const btnCloseAdmin = $("btnCloseAdmin");
 
+/* ==========================
+   ADD HOURS
+   ========================== */
 const readonlyAddHours = $("readonlyAddHours");
 const hoursForm = $("hoursForm");
 const agentSelect = $("agentSelect");
@@ -56,13 +74,20 @@ const endTime = $("endTime");
 const durationOut = $("durationOut");
 const amountOut = $("amountOut");
 
+/* ==========================
+   SITES
+   ========================== */
 const btnAddSite = $("btnAddSite");
 const sitePick = $("sitePick");
 const siteEntriesList = $("siteEntriesList");
 
+/* ==========================
+   PAYMENTS
+   ========================== */
 const btnAddAgent = $("btnAddAgent");
 const agentPayTable = $("agentPayTable");
 
+/* Payment modal */
 const payModal = $("payModal");
 const payModalAgent = $("payModalAgent");
 const payForm = $("payForm");
@@ -72,7 +97,9 @@ const btnClosePay = $("btnClosePay");
 const readonlyPay = $("readonlyPay");
 let payAgentId = null;
 
-// Navigation
+/* ==========================
+   NAV
+   ========================== */
 document.querySelectorAll("[data-go]").forEach(btn => btn.addEventListener("click", () => go(btn.dataset.go)));
 
 function showOnly(view){
@@ -86,7 +113,9 @@ function go(where){
   if (where === "payments") return showOnly(viewPayments);
 }
 
-// Admin modal
+/* ==========================
+   ADMIN (LOCAL)
+   ========================== */
 btnAdmin.addEventListener("click", () => {
   adminCode.value = "";
   adminMsg.classList.add("hidden");
@@ -131,7 +160,9 @@ function applyAdminUI(){
   readonlyAddHours.classList.toggle("hidden", ADMIN);
 }
 
-// Payment modal
+/* ==========================
+   PAYMENT MODAL
+   ========================== */
 btnClosePay.addEventListener("click", closePayModal);
 payModal.addEventListener("click", (e)=> { if (e.target === payModal) closePayModal(); });
 
@@ -149,7 +180,9 @@ function closePayModal(){
   payModal.classList.add("hidden");
 }
 
-// Defaults
+/* ==========================
+   DEFAULTS
+   ========================== */
 (function initDefaults(){
   workDate.value = todayISO();
   payDate.value = todayISO();
@@ -158,7 +191,9 @@ function closePayModal(){
 })();
 [startTime, endTime, agentSelect].forEach(el => el.addEventListener("change", computeDuration));
 
-// Firestore load
+/* ==========================
+   FIRESTORE LOAD
+   ========================== */
 async function loadAll(){
   const [aSnap, sSnap, eSnap, pSnap] = await Promise.all([
     getDocs(query(collection(db,"agents"), orderBy("name","asc"))),
@@ -179,6 +214,9 @@ async function refreshAll(){
   syncStatus.textContent = "OK ✅";
 }
 
+/* ==========================
+   RENDER
+   ========================== */
 function renderAll(){
   renderSelects();
   renderSitePick();
@@ -220,15 +258,19 @@ sitePick.addEventListener("change", renderSiteEntries);
 function renderSiteEntries(){
   siteEntriesList.innerHTML = "";
   const siteId = sitePick.value;
+
   if (!siteId){
     siteEntriesList.innerHTML = `<div class="item"><div class="itemMain">Aucun chantier</div></div>`;
     return;
   }
+
   const list = ENTRIES.filter(e => e.siteId === siteId);
+
   if (!list.length){
     siteEntriesList.innerHTML = `<div class="item"><div class="itemMain">Aucune heure</div><div class="itemSub">Aucune entrée pour ce chantier.</div></div>`;
     return;
   }
+
   for (const e of list){
     const div = document.createElement("div");
     div.className = "item";
@@ -245,6 +287,7 @@ function renderSiteEntries(){
 
 function renderPaymentsTable(){
   agentPayTable.innerHTML = "";
+
   const header = document.createElement("div");
   header.className = "tr th";
   header.innerHTML = `<div>Agent</div><div>Dû</div><div>Payé</div><div>Reste</div><div></div>`;
@@ -270,16 +313,122 @@ function renderPaymentsTable(){
       <div>${fmtEUR(due)}</div>
       <div>${fmtEUR(paid)}</div>
       <div><b>${fmtEUR(rest)}</b></div>
-      <div><button class="btn adminOnly">+ Paiement</button></div>
+      <div class="actions">
+        <button class="btn adminOnly btnPay">+ Paiement</button>
+        <button class="btn adminOnly btnMerge">Fusionner</button>
+        <button class="btn danger adminOnly btnDel">Supprimer</button>
+      </div>
     `;
-    row.querySelector("button").addEventListener("click", () => openPayModal(a.id));
+
+    row.querySelector(".btnPay").addEventListener("click", () => openPayModal(a.id));
+
+    row.querySelector(".btnMerge").addEventListener("click", async () => {
+      if (!ADMIN) return;
+      if (AGENTS.length < 2) return alert("Il faut au moins 2 agents pour fusionner.");
+
+      const target = promptMergeTarget(a.id);
+      if (!target) return;
+
+      const ok = confirm(`Fusionner "${a.name}" → "${target.name}" ?\n\nToutes les heures & paiements de "${a.name}" seront transférés, puis "${a.name}" sera supprimé.`);
+      if (!ok) return;
+
+      try {
+        syncStatus.textContent = "Fusion…";
+        await mergeAgentAndDeleteSource(a.id, target.id);
+        await refreshAll();
+        syncStatus.textContent = "OK ✅";
+        alert("Fusion terminée ✅");
+      } catch (e) {
+        console.error(e);
+        syncStatus.textContent = "Erreur ❌";
+        alert("Erreur fusion (voir console).");
+      }
+    });
+
+    row.querySelector(".btnDel").addEventListener("click", async () => {
+      if (!ADMIN) return;
+
+      const ok = confirm(`Supprimer "${a.name}" ?\n\nOK = supprime l'agent + ses heures + ses paiements`);
+      if (!ok) return;
+
+      try{
+        syncStatus.textContent = "Suppression…";
+        await deleteAgentAndData(a.id);
+        await refreshAll();
+        syncStatus.textContent = "OK ✅";
+      } catch (e){
+        console.error(e);
+        syncStatus.textContent = "Erreur ❌";
+        alert("Erreur suppression (voir console).");
+      }
+    });
+
     agentPayTable.appendChild(row);
   }
 
   applyAdminUI();
 }
 
-// Admin CRUD
+/* ==========================
+   MERGE / DELETE HELPERS
+   ========================== */
+function promptMergeTarget(sourceId){
+  const source = AGENTS.find(a => a.id === sourceId);
+  const choices = AGENTS.filter(a => a.id !== sourceId);
+
+  // Liste numérotée (simple & mobile friendly)
+  const lines = choices.map((a, i) => `${i+1}) ${a.name}`).join("\n");
+  const input = prompt(
+    `Fusionner "${source?.name ?? "Agent"}" vers quel agent ?\n\n${lines}\n\nEntre le numéro :`
+  );
+  if (!input) return null;
+  const idx = Number(input) - 1;
+  if (!Number.isInteger(idx) || idx < 0 || idx >= choices.length) {
+    alert("Choix invalide.");
+    return null;
+  }
+  return choices[idx];
+}
+
+async function mergeAgentAndDeleteSource(sourceId, targetId){
+  const target = AGENTS.find(a => a.id === targetId);
+  if (!target) throw new Error("Target agent not found");
+
+  // 1) entries : réattribuer agentId + agentName
+  const entriesSnap = await getDocs(query(collection(db, "entries"), where("agentId", "==", sourceId)));
+  for (const d of entriesSnap.docs) {
+    await updateDoc(doc(db, "entries", d.id), {
+      agentId: targetId,
+      agentName: target.name
+    });
+  }
+
+  // 2) payments : réattribuer agentId + agentName
+  const paySnap = await getDocs(query(collection(db, "payments"), where("agentId", "==", sourceId)));
+  for (const d of paySnap.docs) {
+    await updateDoc(doc(db, "payments", d.id), {
+      agentId: targetId,
+      agentName: target.name
+    });
+  }
+
+  // 3) supprimer l’agent source
+  await deleteDoc(doc(db, "agents", sourceId));
+}
+
+async function deleteAgentAndData(agentId){
+  const entriesSnap = await getDocs(query(collection(db, "entries"), where("agentId", "==", agentId)));
+  for (const d of entriesSnap.docs) await deleteDoc(doc(db, "entries", d.id));
+
+  const paySnap = await getDocs(query(collection(db, "payments"), where("agentId", "==", agentId)));
+  for (const d of paySnap.docs) await deleteDoc(doc(db, "payments", d.id));
+
+  await deleteDoc(doc(db, "agents", agentId));
+}
+
+/* ==========================
+   ADMIN CRUD
+   ========================== */
 btnAddAgent.addEventListener("click", async () => {
   if (!ADMIN) return;
   const name = prompt("Nom de l'agent :");
@@ -359,6 +508,9 @@ payForm.addEventListener("submit", async (e) => {
   await refreshAll();
 });
 
+/* ==========================
+   DURATION
+   ========================== */
 function computeDuration(){
   const agent = AGENTS.find(a => a.id === agentSelect.value);
   const rate = Number(agent?.rate ?? DEFAULT_RATE);
@@ -375,6 +527,9 @@ function computeHours(start, end){
   return diff / 60;
 }
 
+/* ==========================
+   BOOT
+   ========================== */
 (async function boot(){
   try{
     syncStatus.textContent = "Connexion…";
@@ -390,10 +545,3 @@ function computeHours(start, end){
     alert("Erreur Firebase. Vérifie Firestore + règles + domaines autorisés.");
   }
 })();
-
-// PWA: register service worker
-if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/HeureChantier/sw.js").catch(console.error);
-  });
-}
