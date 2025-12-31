@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Heures Chantier</title>
+  <title>Heure Chantier</title>
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
@@ -11,11 +11,10 @@
     <div class="brand">
       <div class="logo">HC</div>
       <div>
-        <div class="title">Heures Chantier</div>
-        <div class="subtitle">Gestion par agent • à payer / déjà payé</div>
+        <div class="title">Heure Chantier</div>
+        <div class="subtitle">Heures • Paiements • Récap • Chantiers</div>
       </div>
     </div>
-
     <div class="right">
       <button id="btnSignIn" class="btn">Connexion</button>
       <button id="btnSignOut" class="btn ghost hidden">Déconnexion</button>
@@ -23,63 +22,74 @@
   </header>
 
   <main class="container">
-    <!-- AUTH INFO -->
     <section id="authBanner" class="banner hidden"></section>
 
-    <!-- HOME: AGENTS -->
+    <!-- HOME -->
     <section id="viewHome" class="card">
       <div class="cardHeader">
-        <h2>Accueil</h2>
+        <h2>Agents</h2>
         <div class="actions">
           <button id="btnAddAgent" class="btn primary">+ Ajouter un agent</button>
         </div>
       </div>
-
       <div id="agentsGrid" class="grid"></div>
-
-      <div class="hint">
-        Astuce : clique sur un agent pour voir ses heures non payées et déjà payées.
-      </div>
+      <div class="hint">Clique sur un agent pour gérer ses heures, paiements et récap.</div>
     </section>
 
-    <!-- AGENT VIEW -->
+    <!-- AGENT -->
     <section id="viewAgent" class="card hidden">
       <div class="cardHeader">
         <div class="row">
           <button id="btnBack" class="btn ghost">← Retour</button>
-          <h2 id="agentTitle">Agent</h2>
+          <div>
+            <h2 id="agentTitle">Agent</h2>
+            <div class="mini muted" id="agentSub">Taux par défaut: —</div>
+          </div>
         </div>
         <div class="actions">
+          <button id="btnSetDefaultRate" class="btn">Taux défaut</button>
           <button id="btnRenameAgent" class="btn">Renommer</button>
           <button id="btnDeleteAgent" class="btn danger">Supprimer</button>
         </div>
       </div>
 
-      <!-- Totals -->
+      <!-- quick stats -->
       <div class="stats">
         <div class="stat">
-          <div class="statLabel">Mois</div>
-          <input id="monthFilter" type="month" class="input" />
+          <div class="statLabel">Reste à payer</div>
+          <div id="balanceDue" class="statValue">0 €</div>
+          <div class="mini muted" id="balanceDueSub">Total heures - paiements</div>
         </div>
         <div class="stat">
-          <div class="statLabel">Total à payer</div>
-          <div id="totalUnpaid" class="statValue">0 €</div>
+          <div class="statLabel">Total heures (global)</div>
+          <div id="totalAll" class="statValue">0 €</div>
+          <div class="mini muted" id="totalHoursAll">0 h</div>
         </div>
         <div class="stat">
-          <div class="statLabel">Total payé</div>
-          <div id="totalPaid" class="statValue">0 €</div>
+          <div class="statLabel">Total payé (historique)</div>
+          <div id="totalPaidAll" class="statValue">0 €</div>
+          <div class="mini muted" id="paymentsCount">0 paiements</div>
         </div>
       </div>
 
-      <!-- Tabs -->
+      <!-- tabs -->
       <div class="tabs">
-        <button class="tab active" data-tab="unpaid">Heures (à payer)</button>
-        <button class="tab" data-tab="paid">Déjà payé</button>
+        <button class="tab active" data-tab="hours">Heures</button>
+        <button class="tab" data-tab="pay">Payer</button>
+        <button class="tab" data-tab="history">Historique</button>
+        <button class="tab" data-tab="recap">Récap</button>
       </div>
 
-      <!-- Add entry form -->
-      <div class="cardSub">
-        <h3>Ajouter une entrée</h3>
+      <!-- HOURS -->
+      <section id="tabHours" class="cardSub">
+        <div class="row spaceBetween">
+          <h3>Ajouter une entrée</h3>
+          <div class="row gap">
+            <div class="mini muted">Mois</div>
+            <input id="monthFilter" type="month" class="input small" />
+          </div>
+        </div>
+
         <form id="entryForm" class="form">
           <div class="field">
             <label>Date</label>
@@ -90,13 +100,23 @@
             <input id="fHours" type="number" step="0.25" min="0" class="input" placeholder="ex: 7.5" required />
           </div>
           <div class="field">
-            <label>Taux horaire (€)</label>
-            <input id="fRate" type="number" step="0.01" min="0" class="input" placeholder="ex: 15" required />
+            <label>Taux (€)</label>
+            <div class="row gap">
+              <input id="fRate" type="number" step="0.01" min="0" class="input" placeholder="15" required />
+              <button id="btnUseDefaultRate" class="btn ghost" type="button">15€/h</button>
+            </div>
           </div>
+
           <div class="field">
             <label>Chantier</label>
-            <input id="fSite" type="text" class="input" placeholder="ex: Rue des Lilas" />
+            <div class="row gap">
+              <select id="fSite" class="input">
+                <option value="">—</option>
+              </select>
+              <button id="btnAddSite" class="btn" type="button">+ Chantier</button>
+            </div>
           </div>
+
           <div class="field span2">
             <label>Note</label>
             <input id="fNote" type="text" class="input" placeholder="optionnel" />
@@ -107,15 +127,12 @@
             <button id="btnResetForm" class="btn ghost" type="button">Réinitialiser</button>
           </div>
         </form>
-      </div>
 
-      <!-- List -->
-      <div class="cardSub">
+        <div class="divider"></div>
+
         <div class="row spaceBetween">
-          <h3 id="listTitle">Heures (à payer)</h3>
-          <div class="row gap">
-            <button id="btnExportCSV" class="btn">Exporter CSV</button>
-          </div>
+          <h3>Entrées du mois</h3>
+          <button id="btnExportCSV" class="btn">Exporter CSV</button>
         </div>
 
         <div class="tableWrap">
@@ -126,6 +143,8 @@
                 <th>Heures</th>
                 <th>Taux</th>
                 <th>Total</th>
+                <th>Payé</th>
+                <th>Reste</th>
                 <th>Chantier</th>
                 <th>Note</th>
                 <th>Actions</th>
@@ -134,15 +153,49 @@
             <tbody id="entriesTbody"></tbody>
           </table>
         </div>
-      </div>
-    </section>
-  </main>
+      </section>
 
-  <footer class="footer">
-    <span>Heures Chantier • Firebase • v1</span>
-  </footer>
+      <!-- PAY -->
+      <section id="tabPay" class="cardSub hidden">
+        <div class="row spaceBetween">
+          <h3>Ajouter un paiement</h3>
+          <div class="pill">Déduit automatiquement du reste à payer</div>
+        </div>
 
-  <script type="module" src="./firebase.js"></script>
-  <script type="module" src="./app.js"></script>
-</body>
-</html>
+        <form id="payForm" class="form two">
+          <div class="field">
+            <label>Date paiement</label>
+            <input id="pDate" type="date" class="input" required />
+          </div>
+          <div class="field">
+            <label>Montant (€)</label>
+            <input id="pAmount" type="number" min="0" step="0.01" class="input" placeholder="ex: 200" required />
+          </div>
+          <div class="field span2">
+            <label>Note</label>
+            <input id="pNote" type="text" class="input" placeholder="optionnel (ex: acompte)" />
+          </div>
+
+          <div class="field span2 row gap">
+            <button class="btn primary" type="submit">Enregistrer paiement</button>
+            <button id="btnPayMax" class="btn" type="button">Payer tout le reste</button>
+          </div>
+        </form>
+
+        <div class="mini muted">
+          Le paiement sera appliqué automatiquement aux entrées les plus anciennes non soldées (logique “FIFO”).
+        </div>
+      </section>
+
+      <!-- HISTORY -->
+      <section id="tabHistory" class="cardSub hidden">
+        <div class="row spaceBetween">
+          <h3>Historique des paiements</h3>
+          <div class="mini muted">Date • Montant • Note</div>
+        </div>
+        <div class="tableWrap">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Mo
