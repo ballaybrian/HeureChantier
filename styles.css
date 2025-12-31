@@ -202,3 +202,10 @@ label{font-size:12px; color:var(--muted)}
 }
 .modalTitle{font-weight:950; font-size:18px}
 .modalSub{color:var(--muted); font-size:12px; margin-bottom:10px}
+/* Actions dans le tableau Paiement */
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
