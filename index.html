@@ -4,11 +4,11 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Heure Chantier</title>
-  <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="/HeureChantier/styles.css" />
 </head>
 <body>
   <main class="app">
-    <!-- Top status -->
+
     <header class="top">
       <div class="topLeft">
         <div class="pill" id="modePill">Mode: Lecture</div>
@@ -34,17 +34,17 @@
 
           <button class="menuBtn" data-go="sites">
             <div class="menuTitle">Chantier</div>
-            <div class="menuDesc">Voir les heures par chantier</div>
+            <div class="menuDesc">Heures passées par chantier</div>
           </button>
 
           <button class="menuBtn" data-go="payments">
             <div class="menuTitle">Paiement</div>
-            <div class="menuDesc">Dû • Payé • Reste par agent</div>
+            <div class="menuDesc">Sommes dues • payées • reste</div>
           </button>
         </div>
 
         <div class="footNote">
-          Tout le monde peut voir. Seuls les admins peuvent modifier.
+          Tout le monde peut voir. Seuls les admins peuvent modifier (code).
         </div>
       </div>
     </section>
@@ -159,10 +159,12 @@
               <label>Montant (€)</label>
               <input id="payAmount" type="number" step="0.01" min="0" class="input" required />
             </div>
+
             <div class="row">
               <button class="primaryBtn adminOnly" type="submit">Valider</button>
               <button id="btnClosePay" type="button" class="btn ghost">Annuler</button>
             </div>
+
             <div class="warning tiny hidden" id="readonlyPay">
               Mode lecture : passe en <b>Mode admin</b> pour ajouter.
             </div>
@@ -182,17 +184,20 @@
             <label>Code admin</label>
             <input id="adminCode" type="password" class="input" placeholder="••••••" required />
           </div>
+
           <div class="row">
             <button class="primaryBtn" type="submit">Activer</button>
             <button id="btnCloseAdmin" type="button" class="btn ghost">Annuler</button>
           </div>
+
           <div id="adminMsg" class="warning tiny hidden"></div>
         </form>
       </div>
     </div>
+
   </main>
 
-  <script type="module" src="./firebase.js"></script>
-  <script type="module" src="./app.js"></script>
+  <script type="module" src="/HeureChantier/firebase.js"></script>
+  <script type="module" src="/HeureChantier/app.js"></script>
 </body>
 </html>

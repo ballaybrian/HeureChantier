@@ -1,22 +1,44 @@
-import { db, auth, ensureAnon, isAdmin, enableAdminWithCode, disableAdmin } from "./firebase.js";
+import { db, ensureAnon } from "./firebase.js";
 import {
-  collection, addDoc, getDocs, doc, deleteDoc,
+  collection, addDoc, getDocs,
   query, orderBy
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
+// ==========================
+// ADMIN SIMPLE (EN DUR)
+// ==========================
+const ADMIN_CODE = "1234"; // <<< CHANGE ICI
+const ADMIN_STORAGE_KEY = "HC_ADMIN_ENABLED";
+
+function getAdminLocal() {
+  return localStorage.getItem(ADMIN_STORAGE_KEY) === "1";
+}
+function setAdminLocal(on) {
+  localStorage.setItem(ADMIN_STORAGE_KEY, on ? "1" : "0");
+}
+
+// Utils
 const $ = (id) => document.getElementById(id);
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const fmtEUR = (n) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(Number(n || 0));
 const todayISO = () => new Date().toISOString().slice(0, 10);
+const esc = (str) => String(str ?? "")
+  .replaceAll("&","&amp;")
+  .replaceAll("<","&lt;")
+  .replaceAll(">","&gt;")
+  .replaceAll('"',"&quot;")
+  .replaceAll("'","&#039;");
 
 const DEFAULT_RATE = 15;
 
+// Data
 let AGENTS = [];
 let SITES = [];
 let ENTRIES = [];
 let PAYMENTS = [];
 let ADMIN = false;
 
+// Top UI
 const syncStatus = $("syncStatus");
 const modePill = $("modePill");
 const btnAdmin = $("btnAdmin");
@@ -81,36 +103,10 @@ function go(where){
   if (where === "payments") return showOnly(viewPayments);
 }
 
-// Admin UI controls
-btnAdmin.addEventListener("click", () => openAdminModal());
-btnAdminOff.addEventListener("click", async () => {
-  syncStatus.textContent = "Sortie admin…";
-  await disableAdmin();
-  ADMIN = await isAdmin();
-  applyAdminUI();
-  await refreshAll();
-});
-
+// Admin modal open/close
+btnAdmin.addEventListener("click", openAdminModal);
 btnCloseAdmin.addEventListener("click", closeAdminModal);
 adminModal.addEventListener("click", (e)=> { if (e.target === adminModal) closeAdminModal(); });
-
-adminForm.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  adminMsg.classList.add("hidden");
-  try{
-    syncStatus.textContent = "Vérification…";
-    await enableAdminWithCode(adminCode.value.trim());
-    ADMIN = await isAdmin();
-    applyAdminUI();
-    closeAdminModal();
-    await refreshAll();
-  } catch (err){
-    console.error(err);
-    syncStatus.textContent = "Mode: Lecture";
-    adminMsg.classList.remove("hidden");
-    adminMsg.textContent = "Code invalide ou fonction non déployée.";
-  }
-});
 
 function openAdminModal(){
   adminCode.value = "";
@@ -120,6 +116,30 @@ function openAdminModal(){
 function closeAdminModal(){
   adminModal.classList.add("hidden");
 }
+
+// Enable/disable admin (LOCAL)
+adminForm.addEventListener("submit", (e) => {
+  e.preventDefault();
+  adminMsg.classList.add("hidden");
+
+  const code = adminCode.value.trim();
+  if (code !== ADMIN_CODE) {
+    adminMsg.classList.remove("hidden");
+    adminMsg.textContent = "Code admin invalide.";
+    return;
+  }
+
+  setAdminLocal(true);
+  ADMIN = true;
+  applyAdminUI();
+  closeAdminModal();
+});
+
+btnAdminOff.addEventListener("click", () => {
+  setAdminLocal(false);
+  ADMIN = false;
+  applyAdminUI();
+});
 
 // Payments modal
 btnClosePay.addEventListener("click", closePayModal);
@@ -147,7 +167,6 @@ function closePayModal(){
   endTime.value = "12:00";
   computeDuration();
 })();
-
 [startTime, endTime, agentSelect].forEach(el => el.addEventListener("change", computeDuration));
 
 // Firestore load
@@ -177,7 +196,6 @@ function applyAdminUI(){
   btnAdmin.classList.toggle("hidden", ADMIN);
   btnAdminOff.classList.toggle("hidden", !ADMIN);
 
-  // éléments adminOnly
   document.querySelectorAll(".adminOnly").forEach(el => {
     el.disabled = !ADMIN;
     el.style.opacity = ADMIN ? "1" : ".45";
@@ -242,6 +260,7 @@ sitePick.addEventListener("change", renderSiteEntries);
 function renderSiteEntries(){
   siteEntriesList.innerHTML = "";
   const siteId = sitePick.value;
+
   if (!siteId){
     siteEntriesList.innerHTML = `<div class="item"><div class="itemMain">Aucun chantier</div><div class="itemSub">Ajoute un chantier pour commencer.</div></div>`;
     return;
@@ -302,7 +321,7 @@ function renderPaymentsTable(){
     agentPayTable.appendChild(row);
   }
 
-  applyAdminUI(); // pour bien griser si lecture
+  applyAdminUI();
 }
 
 function agentDue(agentId){
@@ -312,8 +331,8 @@ function agentPaid(agentId){
   return round2(PAYMENTS.filter(p => p.agentId === agentId).reduce((s,p)=>s+Number(p.amount||0),0));
 }
 
-// Actions admin (CRUD)
-$("btnAddAgent").addEventListener("click", async () => {
+// Admin CRUD
+btnAddAgent.addEventListener("click", async () => {
   if (!ADMIN) return;
   const name = prompt("Nom de l'agent :");
   if (!name) return;
@@ -321,7 +340,7 @@ $("btnAddAgent").addEventListener("click", async () => {
   await refreshAll();
 });
 
-$("btnAddSite").addEventListener("click", async () => {
+btnAddSite.addEventListener("click", async () => {
   if (!ADMIN) return;
   const name = prompt("Nom du chantier :");
   if (!name) return;
@@ -329,7 +348,7 @@ $("btnAddSite").addEventListener("click", async () => {
   await refreshAll();
 });
 
-$("btnAddAgentQuick").addEventListener("click", async () => {
+btnAddAgentQuick.addEventListener("click", async () => {
   if (!ADMIN) return;
   const name = prompt("Nom de l'agent :");
   if (!name) return;
@@ -337,7 +356,7 @@ $("btnAddAgentQuick").addEventListener("click", async () => {
   await refreshAll();
 });
 
-$("btnAddSiteQuick").addEventListener("click", async () => {
+btnAddSiteQuick.addEventListener("click", async () => {
   if (!ADMIN) return;
   const name = prompt("Nom du chantier :");
   if (!name) return;
@@ -425,21 +444,12 @@ function computeHours(start, end){
   return diff / 60;
 }
 
-function esc(str){
-  return String(str ?? "")
-    .replaceAll("&","&amp;")
-    .replaceAll("<","&lt;")
-    .replaceAll(">","&gt;")
-    .replaceAll('"',"&quot;")
-    .replaceAll("'","&#039;");
-}
-
 // Boot
 (async function boot(){
   try{
     syncStatus.textContent = "Connexion…";
-    await ensureAnon();
-    ADMIN = await isAdmin();
+    await ensureAnon();            // auth anonyme invisible (utile si rules = auth required)
+    ADMIN = getAdminLocal();       // admin local uniquement
     applyAdminUI();
     await refreshAll();
     syncStatus.textContent = "OK ✅";
@@ -447,6 +457,6 @@ function esc(str){
   } catch (e){
     console.error(e);
     syncStatus.textContent = "Erreur Firebase ❌";
-    alert("Erreur Firebase. Vérifie: Auth Anonyme ON, Firestore Rules, Functions déployées, domaines autorisés.");
+    alert("Erreur Firebase. Vérifie: Firestore activé + règles + domaine autorisé.");
   }
 })();
