@@ -3,17 +3,19 @@ import { db, auth, f } from "./firebase.js";
 const $ = (id) => document.getElementById(id);
 const fmtEUR = (n) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(Number(n || 0));
 const todayISO = () => new Date().toISOString().slice(0,10);
+const round2 = (n) => Math.round((Number(n)||0)*100)/100;
 
 let currentUser = null;
 let currentAgent = null;
 
 let agentsCache = [];
 let sitesCache = [];
-let entriesCache = [];
+let entriesAllCache = [];     // toutes les entrées agent (pour stats/recap)
+let entriesMonthCache = [];   // entrées du mois (table)
 let paymentsCache = [];
 
 let activeTab = "hours";
-let recapRange = { start: null, end: null };
+let recapRange = { start:null, end:null };
 
 // UI
 const viewHome = $("viewHome");
@@ -78,8 +80,8 @@ const rDue = $("rDue");
 const recapBySiteTbody = $("recapBySiteTbody");
 const recapByMonthTbody = $("recapByMonthTbody");
 
-// init defaults
-(function init() {
+// INIT
+(function init(){
   const d = new Date();
   monthFilter.value = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
   fDate.value = todayISO();
@@ -91,17 +93,22 @@ btnSignIn.addEventListener("click", async () => {
   const provider = new f.GoogleAuthProvider();
   await f.signInWithPopup(auth, provider);
 });
-btnSignOut.addEventListener("click", async () => { await f.signOut(auth); });
+
+btnSignOut.addEventListener("click", async () => {
+  await f.signOut(auth);
+});
 
 f.onAuthStateChanged(auth, async (user) => {
   currentUser = user || null;
   renderAuth();
+
   if (!currentUser) {
     agentsGrid.innerHTML = "";
     showHome();
     return;
   }
-  await loadAllBase();
+
+  await loadBase();
   renderAgents();
 });
 
@@ -137,17 +144,17 @@ function showAgent(){
   viewAgent.classList.remove("hidden");
 }
 
-// LOAD BASE (agents + sites)
-async function loadAllBase(){
+// LOAD BASE: agents + sites
+async function loadBase(){
   if (!guardAuth()) return;
 
   const agentsQ = f.query(
-    f.collection(db, "agents"),
+    f.collection(db,"agents"),
     f.where("ownerUid","==",currentUser.uid),
     f.orderBy("createdAt","desc")
   );
   const sitesQ = f.query(
-    f.collection(db, "sites"),
+    f.collection(db,"sites"),
     f.where("ownerUid","==",currentUser.uid),
     f.orderBy("createdAt","desc")
   );
@@ -178,7 +185,7 @@ function renderAgents(){
   }
 }
 
-// AGENTS actions
+// Agents actions
 btnAddAgent.addEventListener("click", async () => {
   if (!guardAuth()) return;
   const name = prompt("Nom de l'agent :");
@@ -191,7 +198,7 @@ btnAddAgent.addEventListener("click", async () => {
     createdAt: f.serverTimestamp()
   });
 
-  await loadAllBase();
+  await loadBase();
   renderAgents();
 });
 
@@ -202,10 +209,10 @@ btnRenameAgent.addEventListener("click", async () => {
   const newName = prompt("Nouveau nom :", currentAgent.name || "");
   if (!newName) return;
 
-  await f.updateDoc(f.doc(db,"agents", currentAgent.id), { name: newName.trim() });
+  await f.updateDoc(f.doc(db,"agents",currentAgent.id), { name: newName.trim() });
   currentAgent.name = newName.trim();
   agentTitle.textContent = `Agent : ${currentAgent.name}`;
-  await loadAllBase();
+  await loadBase();
   renderAgents();
 });
 
@@ -214,9 +221,9 @@ btnDeleteAgent.addEventListener("click", async () => {
   const ok = confirm(`Supprimer l'agent "${currentAgent.name}" ?`);
   if (!ok) return;
 
-  await f.deleteDoc(f.doc(db,"agents", currentAgent.id));
+  await f.deleteDoc(f.doc(db,"agents",currentAgent.id));
   showHome();
-  await loadAllBase();
+  await loadBase();
   renderAgents();
 });
 
@@ -224,19 +231,19 @@ btnSetDefaultRate.addEventListener("click", async () => {
   if (!guardAuth() || !currentAgent) return;
   const v = prompt("Taux horaire par défaut (€) :", String(currentAgent.defaultRate ?? 15));
   if (v === null) return;
+
   const rate = Number(v);
   if (!(rate >= 0)) return alert("Valeur invalide.");
 
-  await f.updateDoc(f.doc(db,"agents", currentAgent.id), { defaultRate: rate });
+  await f.updateDoc(f.doc(db,"agents",currentAgent.id), { defaultRate: rate });
   currentAgent.defaultRate = rate;
   applyDefaultRateUI();
-  await loadAllBase();
+  await loadBase();
   renderAgents();
 });
 
-// SITES
+// Sites
 function renderSitesSelect(){
-  if (!fSite) return;
   const keep = fSite.value;
   fSite.innerHTML = `<option value="">—</option>`;
   for (const s of sitesCache){
@@ -252,15 +259,17 @@ btnAddSite.addEventListener("click", async () => {
   if (!guardAuth()) return;
   const name = prompt("Nom du chantier :");
   if (!name) return;
+
   await f.addDoc(f.collection(db,"sites"), {
     ownerUid: currentUser.uid,
     name: name.trim(),
     createdAt: f.serverTimestamp()
   });
-  await loadAllBase();
+
+  await loadBase();
 });
 
-// OPEN AGENT
+// Open agent + refresh data
 async function openAgent(agentId){
   currentAgent = agentsCache.find(a => a.id === agentId);
   if (!currentAgent) return;
@@ -277,19 +286,13 @@ function applyDefaultRateUI(){
   const dr = Number(currentAgent?.defaultRate ?? 15);
   agentSub.textContent = `Taux par défaut: ${dr}€/h`;
   btnUseDefaultRate.textContent = `${dr}€/h`;
-  // pré-remplissage
   fRate.value = String(dr);
 }
 
-btnUseDefaultRate.addEventListener("click", () => {
-  if (!currentAgent) return;
-  fRate.value = String(Number(currentAgent.defaultRate ?? 15));
-});
+btnUseDefaultRate.addEventListener("click", () => applyDefaultRateUI());
 
-// TABS
-document.querySelectorAll(".tab").forEach(b => {
-  b.addEventListener("click", () => setTab(b.dataset.tab));
-});
+// Tabs
+document.querySelectorAll(".tab").forEach(b => b.addEventListener("click", () => setTab(b.dataset.tab)));
 
 function setTab(tab){
   activeTab = tab;
@@ -301,10 +304,7 @@ function setTab(tab){
   if (tab === "recap") renderRecap();
 }
 
-// ENTRIES load: month + global totals rely on all entries, so we load:
-// - month entries (for table)
-// - all entries totals (for stats/recap)
-// - payments all (for history and stats)
+// Refresh data
 monthFilter.addEventListener("change", () => refreshAgentData());
 
 async function refreshAgentData(){
@@ -314,6 +314,7 @@ async function refreshAgentData(){
   const start = `${yyyy}-${mm}-01`;
   const end = nextMonthStart(yyyy, mm);
 
+  // Month entries
   const monthQ = f.query(
     f.collection(db,"entries"),
     f.where("ownerUid","==",currentUser.uid),
@@ -323,13 +324,15 @@ async function refreshAgentData(){
     f.orderBy("date","desc")
   );
 
-  const allEntriesQ = f.query(
+  // All entries for recap/stats
+  const allQ = f.query(
     f.collection(db,"entries"),
     f.where("ownerUid","==",currentUser.uid),
     f.where("agentId","==",currentAgent.id),
     f.orderBy("date","asc")
   );
 
+  // Payments history
   const payQ = f.query(
     f.collection(db,"payments"),
     f.where("ownerUid","==",currentUser.uid),
@@ -339,18 +342,15 @@ async function refreshAgentData(){
 
   const [monthSnap, allSnap, paySnap] = await Promise.all([
     f.getDocs(monthQ),
-    f.getDocs(allEntriesQ),
+    f.getDocs(allQ),
     f.getDocs(payQ)
   ]);
 
-  // month entries table uses monthSnap
-  const monthEntries = monthSnap.docs.map(d => normalizeEntry({ id:d.id, ...d.data() }));
-  // all entries for recap/stats
-  entriesCache = allSnap.docs.map(d => normalizeEntry({ id:d.id, ...d.data() }));
-  // payments
+  entriesMonthCache = monthSnap.docs.map(d => normalizeEntry({ id:d.id, ...d.data() }));
+  entriesAllCache = allSnap.docs.map(d => normalizeEntry({ id:d.id, ...d.data() }));
   paymentsCache = paySnap.docs.map(d => ({ id:d.id, ...d.data() }));
 
-  renderMonthTable(monthEntries);
+  renderMonthTable();
   renderPaymentsHistory();
   renderTopStats();
   if (activeTab === "recap") renderRecap();
@@ -359,21 +359,22 @@ async function refreshAgentData(){
 function normalizeEntry(e){
   const hours = Number(e.hours ?? 0);
   const rate = Number(e.rate ?? 0);
-  const amount = Number(e.amount ?? (hours * rate));
-  // migration from old model
+  const amount = Number(e.amount ?? round2(hours * rate));
+
+  // migration si ancien modèle (paid boolean)
   let paidAmount = Number(e.paidAmount ?? 0);
   if (e.paid === true && paidAmount === 0) paidAmount = amount;
-  if (paidAmount > amount) paidAmount = amount;
+  paidAmount = Math.min(paidAmount, amount);
 
   return { ...e, hours, rate, amount, paidAmount };
 }
 
-// TOP STATS
+// Stats top
 function renderTopStats(){
-  const total = entriesCache.reduce((a,e) => a + e.amount, 0);
-  const hours = entriesCache.reduce((a,e) => a + e.hours, 0);
-  const paid = paymentsCache.reduce((a,p) => a + Number(p.amount||0), 0);
-  const due = Math.max(0, total - paid);
+  const total = entriesAllCache.reduce((a,e)=>a+e.amount,0);
+  const hours = entriesAllCache.reduce((a,e)=>a+e.hours,0);
+  const paid = paymentsCache.reduce((a,p)=>a+Number(p.amount||0),0);
+  const due = Math.max(0, round2(total - paid));
 
   totalAll.textContent = fmtEUR(total);
   totalHoursAll.textContent = `${round2(hours)} h`;
@@ -381,15 +382,12 @@ function renderTopStats(){
   paymentsCount.textContent = `${paymentsCache.length} paiements`;
   balanceDue.textContent = fmtEUR(due);
 
-  // pre-fill "payer tout le reste"
   btnPayMax.disabled = due <= 0.0001;
 }
 
-function round2(n){ return Math.round((Number(n)||0) * 100) / 100; }
-
-// ADD ENTRY
-entryForm.addEventListener("submit", async (e) => {
-  e.preventDefault();
+// Add entry
+entryForm.addEventListener("submit", async (ev) => {
+  ev.preventDefault();
   if (!guardAuth() || !currentAgent) return;
 
   const date = fDate.value;
@@ -398,7 +396,6 @@ entryForm.addEventListener("submit", async (e) => {
   if (!date || !(hours >= 0) || !(rate >= 0)) return;
 
   const amount = round2(hours * rate);
-
   const siteId = fSite.value || "";
   const siteName = siteId ? (sitesCache.find(s => s.id === siteId)?.name || "") : "";
   const note = (fNote.value || "").trim();
@@ -429,15 +426,15 @@ btnResetForm.addEventListener("click", () => {
   applyDefaultRateUI();
 });
 
-// MONTH TABLE
-function renderMonthTable(monthEntries){
+// Month table
+function renderMonthTable(){
   entriesTbody.innerHTML = "";
-  if (monthEntries.length === 0){
+  if (entriesMonthCache.length === 0){
     entriesTbody.innerHTML = `<tr><td colspan="9" class="muted">Aucune entrée sur ce mois.</td></tr>`;
     return;
   }
 
-  for (const e of monthEntries.slice().sort((a,b)=> (b.date||"").localeCompare(a.date||""))){
+  for (const e of entriesMonthCache){
     const rest = round2(Math.max(0, e.amount - e.paidAmount));
     const tr = document.createElement("tr");
     tr.innerHTML = `
@@ -456,7 +453,6 @@ function renderMonthTable(monthEntries){
         </div>
       </td>
     `;
-
     tr.querySelector('[data-a="edit"]').addEventListener("click", () => editEntry(e));
     tr.querySelector('[data-a="del"]').addEventListener("click", () => deleteEntry(e));
     entriesTbody.appendChild(tr);
@@ -479,12 +475,9 @@ async function editEntry(e){
   if (note === null) return;
 
   const amount = round2(hours * rate);
-
-  // si on baisse le total en dessous du payé, on cap
   const paidAmount = Math.min(Number(e.paidAmount||0), amount);
 
   await f.updateDoc(f.doc(db,"entries", e.id), { date, hours, rate, amount, note: note.trim(), paidAmount });
-
   await refreshAgentData();
 }
 
@@ -495,24 +488,17 @@ async function deleteEntry(e){
   await refreshAgentData();
 }
 
-// EXPORT CSV (global agent filtered by month)
-btnExportCSV.addEventListener("click", async () => {
+// Export CSV
+btnExportCSV.addEventListener("click", () => {
   if (!currentAgent) return;
 
-  const [yyyy, mm] = monthFilter.value.split("-");
-  const start = `${yyyy}-${mm}-01`;
-  const end = nextMonthStart(yyyy, mm);
-
-  const monthEntries = entriesCache.filter(e => e.date >= start && e.date < end)
-    .sort((a,b)=> (a.date||"").localeCompare(b.date||""));
-
-  const rows = monthEntries.map(e => ({
+  const rows = entriesMonthCache.map(e => ({
     date: e.date,
     hours: e.hours,
     rate: e.rate,
     total: e.amount,
     paid: e.paidAmount,
-    due: Math.max(0, e.amount - e.paidAmount),
+    due: Math.max(0, round2(e.amount - e.paidAmount)),
     site: e.siteName || "",
     note: e.note || ""
   }));
@@ -531,12 +517,11 @@ btnExportCSV.addEventListener("click", async () => {
   URL.revokeObjectURL(url);
 });
 
-// PAYMENTS (partial) – FIFO allocation to oldest unpaid entries
-payForm.addEventListener("submit", async (e) => {
-  e.preventDefault();
+// Payments (partial) + allocation FIFO
+payForm.addEventListener("submit", async (ev) => {
+  ev.preventDefault();
   await addPaymentAndAllocate(false);
 });
-
 btnPayMax.addEventListener("click", async () => {
   await addPaymentAndAllocate(true);
 });
@@ -548,20 +533,13 @@ async function addPaymentAndAllocate(payAll){
   let amount = Number(pAmount.value);
   const note = (pNote.value || "").trim();
 
-  // compute due from totals
-  const total = entriesCache.reduce((a,e)=>a+e.amount,0);
+  const total = entriesAllCache.reduce((a,e)=>a+e.amount,0);
   const paid = paymentsCache.reduce((a,p)=>a+Number(p.amount||0),0);
-  const due = Math.max(0, total - paid);
+  const due = Math.max(0, round2(total - paid));
 
   if (payAll) amount = due;
-
   if (!(amount > 0)) return alert("Montant invalide.");
-  if (amount > due + 0.01){
-    const ok = confirm(`Le montant dépasse le reste à payer (${fmtEUR(due)}). Continuer ?`);
-    if (!ok) return;
-  }
 
-  // create payment history row
   await f.addDoc(f.collection(db,"payments"), {
     ownerUid: currentUser.uid,
     agentId: currentAgent.id,
@@ -571,21 +549,19 @@ async function addPaymentAndAllocate(payAll){
     createdAt: f.serverTimestamp()
   });
 
-  // allocate to entries FIFO (oldest first)
+  // FIFO allocation
   let remaining = round2(amount);
-  const unpaidSorted = entriesCache
+  const unpaid = entriesAllCache
     .slice()
     .sort((a,b)=> (a.date||"").localeCompare(b.date||""))
     .filter(e => e.paidAmount < e.amount);
 
-  for (const e of unpaidSorted){
+  for (const e of unpaid){
     if (remaining <= 0) break;
     const rest = round2(e.amount - e.paidAmount);
     const add = Math.min(rest, remaining);
-    const newPaid = round2(e.paidAmount + add);
     remaining = round2(remaining - add);
-
-    await f.updateDoc(f.doc(db,"entries", e.id), { paidAmount: newPaid });
+    await f.updateDoc(f.doc(db,"entries", e.id), { paidAmount: round2(e.paidAmount + add) });
   }
 
   payForm.reset();
@@ -594,7 +570,7 @@ async function addPaymentAndAllocate(payAll){
   setTab("history");
 }
 
-// HISTORY
+// History
 function renderPaymentsHistory(){
   paymentsTbody.innerHTML = "";
   if (paymentsCache.length === 0){
@@ -611,9 +587,8 @@ function renderPaymentsHistory(){
       <td><button class="btn danger" data-a="del">Suppr.</button></td>
     `;
     tr.querySelector('[data-a="del"]').addEventListener("click", async () => {
-      const ok = confirm("Supprimer ce paiement ? (⚠️ n'annule pas automatiquement l'allocation déjà appliquée aux lignes)");
+      const ok = confirm("Supprimer ce paiement ? (n'annule pas automatiquement l'allocation sur les lignes)");
       if (!ok) return;
-
       await f.deleteDoc(f.doc(db,"payments", p.id));
       await refreshAgentData();
     });
@@ -621,7 +596,7 @@ function renderPaymentsHistory(){
   }
 }
 
-// RECAP
+// Recap
 btnApplyRange.addEventListener("click", () => {
   recapRange.start = rStart.value || null;
   recapRange.end = rEnd.value || null;
@@ -644,20 +619,18 @@ function renderRecap(){
     return true;
   };
 
-  const entries = recapRange.start || recapRange.end
-    ? entriesCache.filter(e => inRange(e.date))
-    : entriesCache.slice();
+  const entries = (recapRange.start || recapRange.end)
+    ? entriesAllCache.filter(e => inRange(e.date))
+    : entriesAllCache.slice();
 
-  const total = entries.reduce((a,e)=>a+e.amount,0);
-  const hours = entries.reduce((a,e)=>a+e.hours,0);
-
-  // payments period: based on payment dates
   const pays = (recapRange.start || recapRange.end)
     ? paymentsCache.filter(p => inRange(p.date))
     : paymentsCache.slice();
-  const paid = pays.reduce((a,p)=>a+Number(p.amount||0),0);
 
-  const due = Math.max(0, total - paid);
+  const total = entries.reduce((a,e)=>a+e.amount,0);
+  const hours = entries.reduce((a,e)=>a+e.hours,0);
+  const paid = pays.reduce((a,p)=>a+Number(p.amount||0),0);
+  const due = Math.max(0, round2(total - paid));
 
   rTotal.textContent = fmtEUR(total);
   rHours.textContent = `${round2(hours)} h`;
@@ -674,14 +647,17 @@ function renderRecap(){
     bySite.set(k, cur);
   }
   recapBySiteTbody.innerHTML = "";
-  Array.from(bySite.entries())
-    .sort((a,b)=> b[1].total - a[1].total)
-    .forEach(([site, v]) => {
-      const tr = document.createElement("tr");
-      tr.innerHTML = `<td>${escapeHtml(site)}</td><td>${round2(v.hours)} h</td><td><b>${fmtEUR(v.total)}</b></td>`;
-      recapBySiteTbody.appendChild(tr);
-    });
-  if (bySite.size === 0) recapBySiteTbody.innerHTML = `<tr><td colspan="3" class="muted">Aucune donnée.</td></tr>`;
+  if (bySite.size === 0){
+    recapBySiteTbody.innerHTML = `<tr><td colspan="3" class="muted">Aucune donnée.</td></tr>`;
+  } else {
+    Array.from(bySite.entries())
+      .sort((a,b)=> b[1].total - a[1].total)
+      .forEach(([site,v]) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td>${escapeHtml(site)}</td><td>${round2(v.hours)} h</td><td><b>${fmtEUR(v.total)}</b></td>`;
+        recapBySiteTbody.appendChild(tr);
+      });
+  }
 
   // by month
   const byMonth = new Map();
@@ -693,26 +669,26 @@ function renderRecap(){
     byMonth.set(m, cur);
   }
   recapByMonthTbody.innerHTML = "";
-  Array.from(byMonth.entries())
-    .sort((a,b)=> (a[0]).localeCompare(b[0]))
-    .forEach(([m, v]) => {
-      const tr = document.createElement("tr");
-      tr.innerHTML = `<td>${escapeHtml(m)}</td><td>${round2(v.hours)} h</td><td><b>${fmtEUR(v.total)}</b></td>`;
-      recapByMonthTbody.appendChild(tr);
-    });
-  if (byMonth.size === 0) recapByMonthTbody.innerHTML = `<tr><td colspan="3" class="muted">Aucune donnée.</td></tr>`;
+  if (byMonth.size === 0){
+    recapByMonthTbody.innerHTML = `<tr><td colspan="3" class="muted">Aucune donnée.</td></tr>`;
+  } else {
+    Array.from(byMonth.entries())
+      .sort((a,b)=> a[0].localeCompare(b[0]))
+      .forEach(([m,v]) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td>${escapeHtml(m)}</td><td>${round2(v.hours)} h</td><td><b>${fmtEUR(v.total)}</b></td>`;
+        recapByMonthTbody.appendChild(tr);
+      });
+  }
 }
 
-// HELPERS
+// Helpers
 function nextMonthStart(yyyy, mm){
   const y = Number(yyyy), m = Number(mm);
-  const d = new Date(y, m - 1, 1);
-  d.setMonth(d.getMonth() + 1);
-  const Y = d.getFullYear();
-  const M = String(d.getMonth() + 1).padStart(2, "0");
-  return `${Y}-${M}-01`;
+  const d = new Date(y, m-1, 1);
+  d.setMonth(d.getMonth()+1);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-01`;
 }
-
 function escapeHtml(str){
   return String(str ?? "")
     .replaceAll("&","&amp;")
@@ -721,7 +697,6 @@ function escapeHtml(str){
     .replaceAll('"',"&quot;")
     .replaceAll("'","&#039;");
 }
-
 function csvCell(v){
   const s = String(v ?? "");
   if (s.includes(";") || s.includes('"') || s.includes("\n")) return `"${s.replaceAll('"','""')}"`;

@@ -53,26 +53,24 @@
         </div>
       </div>
 
-      <!-- quick stats -->
       <div class="stats">
         <div class="stat">
           <div class="statLabel">Reste à payer</div>
           <div id="balanceDue" class="statValue">0 €</div>
-          <div class="mini muted" id="balanceDueSub">Total heures - paiements</div>
+          <div class="mini muted">Total heures - paiements</div>
         </div>
         <div class="stat">
           <div class="statLabel">Total heures (global)</div>
           <div id="totalAll" class="statValue">0 €</div>
-          <div class="mini muted" id="totalHoursAll">0 h</div>
+          <div id="totalHoursAll" class="mini muted">0 h</div>
         </div>
         <div class="stat">
           <div class="statLabel">Total payé (historique)</div>
           <div id="totalPaidAll" class="statValue">0 €</div>
-          <div class="mini muted" id="paymentsCount">0 paiements</div>
+          <div id="paymentsCount" class="mini muted">0 paiements</div>
         </div>
       </div>
 
-      <!-- tabs -->
       <div class="tabs">
         <button class="tab active" data-tab="hours">Heures</button>
         <button class="tab" data-tab="pay">Payer</button>
@@ -85,7 +83,7 @@
         <div class="row spaceBetween">
           <h3>Ajouter une entrée</h3>
           <div class="row gap">
-            <div class="mini muted">Mois</div>
+            <span class="mini muted">Mois</span>
             <input id="monthFilter" type="month" class="input small" />
           </div>
         </div>
@@ -102,7 +100,7 @@
           <div class="field">
             <label>Taux (€)</label>
             <div class="row gap">
-              <input id="fRate" type="number" step="0.01" min="0" class="input" placeholder="15" required />
+              <input id="fRate" type="number" step="0.01" min="0" class="input" required />
               <button id="btnUseDefaultRate" class="btn ghost" type="button">15€/h</button>
             </div>
           </div>
@@ -183,7 +181,7 @@
         </form>
 
         <div class="mini muted">
-          Le paiement sera appliqué automatiquement aux entrées les plus anciennes non soldées (logique “FIFO”).
+          Le paiement est appliqué automatiquement aux entrées les plus anciennes non soldées (FIFO).
         </div>
       </section>
 
@@ -196,6 +194,80 @@
         <div class="tableWrap">
           <table class="table">
             <thead>
-              <tr>
-                <th>Date</th>
-                <th>Mo
+              <tr><th>Date</th><th>Montant</th><th>Note</th><th>Actions</th></tr>
+            </thead>
+            <tbody id="paymentsTbody"></tbody>
+          </table>
+        </div>
+        <div class="mini muted" style="margin-top:8px;">
+          Note : si tu supprimes un paiement, l’allocation faite sur les lignes ne se “défait” pas automatiquement (je peux te faire la v3 “recalcul auto” si tu veux).
+        </div>
+      </section>
+
+      <!-- RECAP -->
+      <section id="tabRecap" class="cardSub hidden">
+        <div class="row spaceBetween">
+          <h3>Récap complet</h3>
+          <div class="row gap">
+            <input id="rStart" type="date" class="input small" />
+            <span class="mini muted">→</span>
+            <input id="rEnd" type="date" class="input small" />
+            <button id="btnApplyRange" class="btn">Appliquer</button>
+            <button id="btnClearRange" class="btn ghost">Reset</button>
+          </div>
+        </div>
+
+        <div class="recapGrid">
+          <div class="kpi">
+            <div class="mini muted">Total période</div>
+            <div id="rTotal" class="kpiVal">0 €</div>
+            <div id="rHours" class="mini muted">0 h</div>
+          </div>
+          <div class="kpi">
+            <div class="mini muted">Payé période</div>
+            <div id="rPaid" class="kpiVal">0 €</div>
+            <div class="mini muted">via historique</div>
+          </div>
+          <div class="kpi">
+            <div class="mini muted">Reste période</div>
+            <div id="rDue" class="kpiVal">0 €</div>
+            <div class="mini muted">théorique</div>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="row spaceBetween">
+          <h3>Par chantier</h3>
+          <div class="mini muted">Heures / Total</div>
+        </div>
+        <div class="tableWrap">
+          <table class="table">
+            <thead><tr><th>Chantier</th><th>Heures</th><th>Total</th></tr></thead>
+            <tbody id="recapBySiteTbody"></tbody>
+          </table>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="row spaceBetween">
+          <h3>Par mois</h3>
+          <div class="mini muted">AAAA-MM</div>
+        </div>
+        <div class="tableWrap">
+          <table class="table">
+            <thead><tr><th>Mois</th><th>Heures</th><th>Total</th></tr></thead>
+            <tbody id="recapByMonthTbody"></tbody>
+          </table>
+        </div>
+      </section>
+
+    </section>
+  </main>
+
+  <footer class="footer">Heure Chantier • v2</footer>
+
+  <script type="module" src="./firebase.js"></script>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
